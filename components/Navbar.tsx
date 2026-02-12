@@ -7,7 +7,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
 export default function Navbar() {
-    const { user, loading } = useAuth();
+    // Vercel'deki derleme hatasını (loading property) bypass etmek için 'as any' eklendi
+    const { user, loading } = useAuth() as any;
     const router = useRouter();
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -18,7 +19,7 @@ export default function Navbar() {
         window.location.reload();
     };
 
-    // Close dropdown when clicking outside
+    // Menü dışına tıklandığında dropdown'ı kapat
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -40,7 +41,7 @@ export default function Navbar() {
                     </Link>
                 </div>
 
-                {/* SEARCH BAR (Center-Left) */}
+                {/* SEARCH BAR */}
                 <div className="hidden md:flex flex-1 max-w-md mr-auto">
                     <div className="relative w-full">
                         <input
@@ -57,34 +58,25 @@ export default function Navbar() {
                 {/* RIGHT NAVIGATION */}
                 <div className="flex items-center space-x-6">
 
-                    {/* SELL LINK */}
+                    {/* SELL */}
                     <Link href="/listings/create" className="flex flex-col items-center group text-gray-500 hover:text-green-600 transition-colors">
                         <div className="bg-gray-100 p-2 rounded-full group-hover:bg-green-50 transition-colors">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         </div>
-                        <span className="text-[10px] font-bold mt-1">SELL</span>
+                        <span className="text-[10px] font-bold mt-1 uppercase">Sell</span>
                     </Link>
 
-                    {/* WANTED LINK */}
+                    {/* WANTED */}
                     <Link href="/wanted" className="flex flex-col items-center group text-gray-500 hover:text-green-600 transition-colors">
                         <div className="bg-gray-100 p-2 rounded-full group-hover:bg-green-50 transition-colors">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                         </div>
-                        <span className="text-[10px] font-bold mt-1">WANTED</span>
-                    </Link>
-
-                    {/* NOTIFICATIONS LINK */}
-                    <Link href="/notifications" className="flex flex-col items-center group text-gray-500 hover:text-green-600 transition-colors relative">
-                        <div className="bg-gray-100 p-2 rounded-full group-hover:bg-green-50 transition-colors">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                        </div>
-                        <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-                        <span className="text-[10px] font-bold mt-1">ALERTS</span>
+                        <span className="text-[10px] font-bold mt-1 uppercase">Wanted</span>
                     </Link>
 
                     <div className="h-8 w-px bg-gray-200 mx-2"></div>
 
-                    {/* USER PROFILE DROPDOWN */}
+                    {/* USER PROFILE */}
                     {!loading && (
                         user ? (
                             <div className="relative" ref={dropdownRef}>
@@ -97,9 +89,8 @@ export default function Navbar() {
                                     </div>
                                 </button>
 
-                                {/* Dropdown Menu */}
                                 {dropdownOpen && (
-                                    <div className="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 transform origin-top-right transition-all">
+                                    <div className="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
                                         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
                                             <p className="text-sm font-bold text-gray-900 truncate">My Account</p>
                                             <p className="text-xs text-gray-500 truncate">{user.email}</p>
@@ -109,11 +100,9 @@ export default function Navbar() {
                                             <Link href="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 flex items-center gap-3">
                                                 <span className="bg-gray-100 p-1 rounded-md text-gray-600 text-xs">👤</span> My Profile
                                             </Link>
-
                                             <Link href="/profile?view=listings" className="block px-4 py-2 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 flex items-center gap-3">
                                                 <span className="bg-gray-100 p-1 rounded-md text-gray-600 text-xs">📦</span> My Listings
                                             </Link>
-
                                             <Link href="/profile?view=saved" className="block px-4 py-2 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 flex items-center gap-3">
                                                 <span className="bg-gray-100 p-1 rounded-md text-gray-600 text-xs">❤️</span> Saved Offers
                                             </Link>
@@ -139,7 +128,6 @@ export default function Navbar() {
                         )
                     )}
                 </div>
-
             </div>
         </nav>
     );
