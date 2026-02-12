@@ -1,38 +1,31 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import AuthProvider from "@/components/AuthProvider";
+import { Inter } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/components/AuthProvider";
+import { Suspense } from "react";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "ScrapX - Global Recycling Marketplace",
-  description: "Buy and sell recycled plastics and metals directly. No commissions.",
+  description: "Buy and sell plastic and metal scraps globally.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={inter.className}>
         <AuthProvider>
-          {children}
+          {/* useSearchParams hatasını engellemek için tüm siteyi Suspense ile sarmalıyoruz */}
+          <Suspense fallback={<div className="p-20 text-center font-bold">Loading...</div>}>
+            {children}
+          </Suspense>
         </AuthProvider>
       </body>
     </html>
   );
 }
-

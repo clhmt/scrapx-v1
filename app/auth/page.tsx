@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import Navbar from "@/components/Navbar";
 
-export default function AuthPage() {
+// Ana içeriği ayrı bir fonksiyon olarak tanımlıyoruz
+function AuthContent() {
     const router = useRouter();
     const [isSignUp, setIsSignUp] = useState(false);
     const [email, setEmail] = useState("");
@@ -32,7 +33,7 @@ export default function AuthPage() {
                     password,
                 });
                 if (error) throw error;
-                router.push("/"); // Redirect to home on success
+                router.push("/");
             }
         } catch (err: any) {
             setError(err.message);
@@ -60,7 +61,7 @@ export default function AuthPage() {
                                 }}
                                 className="font-medium text-emerald-600 hover:text-emerald-500 transition-colors"
                             >
-                                {isSignUp ? "sign in to existing account" : "create a new account"}
+                                {isSignUp ? "create a new account" : "sign in to existing account"}
                             </button>
                         </p>
                     </div>
@@ -112,8 +113,8 @@ export default function AuthPage() {
                                 type="submit"
                                 disabled={loading}
                                 className={`group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white ${isSignUp
-                                        ? "bg-blue-600 hover:bg-blue-700 focus:ring-blue-500"
-                                        : "bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
+                                    ? "bg-blue-600 hover:bg-blue-700 focus:ring-blue-500"
+                                    : "bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
                                     } focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all shadow-md hover:shadow-lg ${loading ? "opacity-70 cursor-not-allowed" : ""
                                     }`}
                             >
@@ -122,7 +123,6 @@ export default function AuthPage() {
                         </div>
                     </form>
 
-                    {/* Verification Note */}
                     {isSignUp && (
                         <p className="text-xs text-center text-gray-400 mt-4">
                             By signing up, you agree to our Terms of Service and Privacy Policy.
@@ -131,5 +131,14 @@ export default function AuthPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+// Ana bileşeni Suspense ile sarmalayıp export ediyoruz
+export default function AuthPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-bold">Connecting to ScrapX Auth...</div>}>
+            <AuthContent />
+        </Suspense>
     );
 }
