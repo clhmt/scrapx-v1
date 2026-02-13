@@ -21,7 +21,7 @@ export default function ProfilePage() {
     const [activeTab, setActiveTab] = useState(initialTab);
 
     const [myListings, setMyListings] = useState<any[]>([]);
-    const [myWantedPosts, setMyWantedPosts] = useState<any[]>([]); // YENİ: Wanted ilanları state'i
+    const [myWantedPosts, setMyWantedPosts] = useState<any[]>([]);
     const [savedListings, setSavedListings] = useState<any[]>([]);
     const [followedUsers, setFollowedUsers] = useState<any[]>([]);
 
@@ -29,6 +29,9 @@ export default function ProfilePage() {
     const [followingCount, setFollowingCount] = useState(0);
 
     const [loading, setLoading] = useState(true);
+
+    // YENİ: Kullanıcının gerçek ismini metadata'dan al, yoksa e-postasının baş harflerini kullan
+    const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "User";
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -56,7 +59,6 @@ export default function ProfilePage() {
             const { data } = await supabase.from("listings").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
             setMyListings(data || []);
         }
-        // YENİ: Wanted tab'ına tıklandığında wanted_posts tablosundan verileri çek
         else if (activeTab === 'wanted') {
             const { data } = await supabase.from("wanted_posts").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
             setMyWantedPosts(data || []);
@@ -84,7 +86,7 @@ export default function ProfilePage() {
                     if (usersData && usersData.length > 0) {
                         setFollowedUsers(usersData);
                     } else {
-                        setFollowedUsers(ids.map(id => ({ id, full_name: "Mehmet", company_name: "MNT Paper and Plastics" })));
+                        setFollowedUsers(ids.map(id => ({ id, full_name: "Verified User", company_name: "Partner Company" })));
                     }
                 } else {
                     setFollowedUsers([]);
@@ -96,7 +98,6 @@ export default function ProfilePage() {
         setLoading(false);
     };
 
-    // GÜNCELLENDİ: Hangi tablodan (listings veya wanted_posts) silineceğini parametre olarak alıyor
     const handleDelete = async (id: string, table: string) => {
         const itemType = table === 'listings' ? 'listing' : 'wanted request';
         if (confirm(`Are you sure you want to delete this ${itemType}?`)) {
@@ -111,14 +112,15 @@ export default function ProfilePage() {
         <div className="min-h-screen bg-gray-50 pb-20">
             <Navbar />
 
-            {/* KİŞİSEL BİLGİLER */}
+            {/* DİNAMİK KİŞİSEL BİLGİLER */}
             <div className="bg-white border-b py-10">
                 <div className="max-w-7xl mx-auto px-4 flex items-center gap-6">
                     <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-sm">
-                        {user?.email?.[0].toUpperCase()}
+                        {userName[0].toUpperCase()}
                     </div>
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Hamit Öcal</h1>
+                        {/* DİNAMİK İSİM BURADA YAZDIRILIYOR */}
+                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{userName}</h1>
                         <div className="flex items-center gap-2 mt-1 mb-2">
                             <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Verified Member</span>
                             <span className="text-gray-400 text-sm">• {user?.email}</span>
@@ -137,14 +139,13 @@ export default function ProfilePage() {
 
             <div className="max-w-7xl mx-auto px-4 py-8">
 
-                {/* SEKME MENÜSÜ */}
                 <div className="flex border-b mb-8 gap-8 overflow-x-auto whitespace-nowrap">
                     <button onClick={() => setActiveTab('listings')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'listings' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>My Listings</button>
                     <button onClick={() => setActiveTab('wanted')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'wanted' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>My Wanted Requests</button>
                     <button onClick={() => setActiveTab('saved')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'saved' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>Saved Offers</button>
                 </div>
 
-                {/* TAB: MY LISTINGS */}
+                {/* MY LISTINGS */}
                 {activeTab === 'listings' && (
                     <>
                         <div className="flex justify-end mb-6">
@@ -170,7 +171,6 @@ export default function ProfilePage() {
                                             <p className="text-xl font-black text-green-600 mb-4">{formatPrice(item.price)}</p>
                                             <div className="mt-auto flex gap-2 border-t pt-4">
                                                 <Link href={`/listings/edit/${item.id}`} className="flex-1 bg-gray-100 text-center py-2.5 rounded-lg font-bold text-xs text-gray-700 hover:bg-gray-200 transition">Edit</Link>
-                                                {/* Silme işlemine 'listings' parametresi eklendi */}
                                                 <button onClick={() => handleDelete(item.id, 'listings')} className="flex-1 bg-red-50 text-center py-2.5 rounded-lg font-bold text-xs text-red-600 hover:bg-red-100 transition">Delete</button>
                                             </div>
                                         </div>
@@ -181,7 +181,7 @@ export default function ProfilePage() {
                     </>
                 )}
 
-                {/* YENİDEN CANLANDIRILAN TAB: MY WANTED REQUESTS */}
+                {/* MY WANTED REQUESTS */}
                 {activeTab === 'wanted' && (
                     <>
                         <div className="flex justify-end mb-6">
@@ -207,13 +207,8 @@ export default function ProfilePage() {
                                             <p className="text-sm text-gray-400 font-bold">📍 Wanted in {item.country} • Target: <span className="text-green-600">${formatPrice(item.target_price)}</span></p>
                                         </div>
                                         <div className="flex gap-2 w-full md:w-auto mt-4 md:mt-0">
-                                            <Link href={`/wanted/edit/${item.id}`} className="flex-1 md:flex-none bg-gray-100 text-center px-8 py-3 rounded-xl font-bold text-xs text-gray-700 hover:bg-gray-200 transition">
-                                                Edit
-                                            </Link>
-                                            {/* Silme işlemine 'wanted_posts' parametresi eklendi */}
-                                            <button onClick={() => handleDelete(item.id, 'wanted_posts')} className="flex-1 md:flex-none bg-red-50 text-center px-8 py-3 rounded-xl font-bold text-xs text-red-600 hover:bg-red-100 transition">
-                                                Delete
-                                            </button>
+                                            <Link href={`/wanted/edit/${item.id}`} className="flex-1 md:flex-none bg-gray-100 text-center px-8 py-3 rounded-xl font-bold text-xs text-gray-700 hover:bg-gray-200 transition">Edit</Link>
+                                            <button onClick={() => handleDelete(item.id, 'wanted_posts')} className="flex-1 md:flex-none bg-red-50 text-center px-8 py-3 rounded-xl font-bold text-xs text-red-600 hover:bg-red-100 transition">Delete</button>
                                         </div>
                                     </div>
                                 ))}
@@ -222,7 +217,7 @@ export default function ProfilePage() {
                     </>
                 )}
 
-                {/* TAB: SAVED OFFERS */}
+                {/* SAVED OFFERS */}
                 {activeTab === 'saved' && (
                     <>
                         {savedListings.length === 0 ? (
@@ -255,7 +250,7 @@ export default function ProfilePage() {
                     </>
                 )}
 
-                {/* TAB: FOLLOWING */}
+                {/* FOLLOWING */}
                 {activeTab === 'following' && (
                     <>
                         {followedUsers.length === 0 ? (
@@ -267,10 +262,10 @@ export default function ProfilePage() {
                                 {followedUsers.map((u) => (
                                     <div key={u.id} className="bg-white p-8 rounded-3xl border border-gray-200 flex flex-col items-center text-center shadow-sm hover:shadow-md transition">
                                         <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
-                                            {u.full_name?.[0]?.toUpperCase() || 'M'}
+                                            {u.full_name?.[0]?.toUpperCase() || 'U'}
                                         </div>
-                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Mehmet'}</h3>
-                                        <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'MNT Paper and Plastics'}</p>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Verified User'}</h3>
+                                        <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'Partner Company'}</p>
 
                                         <button className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-xl font-black w-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
@@ -284,7 +279,7 @@ export default function ProfilePage() {
                     </>
                 )}
 
-                {/* TAB: FOLLOWERS */}
+                {/* FOLLOWERS */}
                 {activeTab === 'followers' && (
                     <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center">
                         <p className="text-gray-400 font-bold italic">Users following you will appear here.</p>
