@@ -9,9 +9,10 @@ function AuthContent() {
     const router = useRouter();
     const [isSignUp, setIsSignUp] = useState(false);
 
-    // YENİ: İsim ve Şirket stateleri
+    // Form Stateleri
     const [fullName, setFullName] = useState("");
     const [companyName, setCompanyName] = useState("");
+    const [phone, setPhone] = useState(""); // YENİ: Telefon numarası
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
 
@@ -25,20 +26,37 @@ function AuthContent() {
 
         try {
             if (isSignUp) {
-                // YENİ: Kayıt olurken İsim ve Şirket bilgisini Supabase Metadata'ya kaydediyoruz
-                const { error } = await supabase.auth.signUp({
+                // 1. Kullanıcıyı oluştur
+                const { data: authData, error: signUpError } = await supabase.auth.signUp({
                     email,
                     password,
                     options: {
                         data: {
                             full_name: fullName,
-                            company_name: companyName
+                            company_name: companyName,
+                            phone: phone
                         }
                     }
                 });
-                if (error) throw error;
-                alert("Sign up successful! Please check your email for verification.");
-                // Kayıt başarılıysa giriş ekranına yönlendir
+
+                if (signUpError) throw signUpError;
+
+                // 2. Herkesin görebileceği 'users' (Açık Profil) tablosuna bilgileri kaydet
+                if (authData.user) {
+                    const { error: profileError } = await supabase.from('users').insert({
+                        id: authData.user.id,
+                        full_name: fullName,
+                        company_name: companyName,
+                        phone: phone,
+                        email: email
+                    });
+
+                    if (profileError) {
+                        console.error("Profile creation error:", profileError);
+                    }
+                }
+
+                alert("Sign up successful! You can now sign in.");
                 setIsSignUp(false);
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
@@ -83,7 +101,7 @@ function AuthContent() {
                     <form className="mt-8 space-y-6" onSubmit={handleAuth}>
                         <div className="rounded-md shadow-sm space-y-4">
 
-                            {/* YENİ: Sadece Kayıt Ol (Sign Up) modunda görünen ekstra alanlar */}
+                            {/* Kayıt Olurken İstenecek Ekstra Alanlar */}
                             {isSignUp && (
                                 <>
                                     <div>
@@ -93,6 +111,10 @@ function AuthContent() {
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Company Name</label>
                                         <input type="text" required value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 sm:text-sm" placeholder="e.g. ScrapX Recycling LLC" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Phone Number</label>
+                                        <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 sm:text-sm" placeholder="+1 (555) 000-0000" />
                                     </div>
                                 </>
                             )}
