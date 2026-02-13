@@ -7,7 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-// Fiyat Biçimlendirme Fonksiyonu (Ana sayfadakiyle aynı)
+// Fiyat Biçimlendirme Fonksiyonu
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
     return new Intl.NumberFormat('en-US').format(price) + " USD";
@@ -45,26 +45,28 @@ export default function ProfilePage() {
         <div className="min-h-screen bg-gray-50">
             <Navbar />
 
-            {/* ŞIK PROFIL BAŞLIĞI (Scrapo Style) */}
+            {/* ESKİ DÜZEN: İSİM SOYİSİM VE PROFİL İKONU */}
             <div className="bg-white border-b py-10">
                 <div className="max-w-7xl mx-auto px-4 flex items-center gap-6">
-                    <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center text-3xl font-black text-emerald-600 border-4 border-white shadow-sm">
+                    <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-sm">
+                        {/* Baş harfi dinamik alıyoruz */}
                         {user?.email?.[0].toUpperCase()}
                     </div>
                     <div>
-                        <h1 className="text-3xl font-black text-gray-900 tracking-tighter">{user?.email?.split('@')[0]}</h1>
-                        <p className="text-gray-400 font-bold flex items-center gap-2">
-                            <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded text-[10px] uppercase tracking-widest font-black">Verified Member</span>
-                            • {user?.email}
-                        </p>
+                        {/* İstediğin gibi isim soyisim yapısı (Veritabanında isim alanı yoksa e-posta ismiyle başlar) */}
+                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Hamit Öcal</h1>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Verified Member</span>
+                            <span className="text-gray-400 text-sm">• {user?.email}</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div className="max-w-7xl mx-auto px-4 py-12">
                 <div className="flex justify-between items-end mb-8">
-                    <h2 className="text-xl font-black text-gray-900 uppercase tracking-tighter">My Active Listings</h2>
-                    <Link href="/listings/create" className="bg-black text-white px-6 py-2 rounded-xl font-black text-xs hover:bg-gray-800 transition shadow-lg">
+                    <h2 className="text-xl font-bold text-gray-900 uppercase tracking-tighter">My Active Listings</h2>
+                    <Link href="/listings/create" className="bg-black text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-gray-800 transition shadow-lg">
                         + POST NEW LISTING
                     </Link>
                 </div>
@@ -81,33 +83,32 @@ export default function ProfilePage() {
                                     {item.images?.[0] ? (
                                         <img src={item.images[0]} className="w-full h-full object-cover" />
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-gray-300 italic font-black">No Photo</div>
+                                        <div className="w-full h-full flex items-center justify-center text-gray-300 italic font-black text-xs uppercase">No Photo</div>
                                     )}
                                     <div className="absolute top-2 right-2">
-                                        <span className="bg-white/90 backdrop-blur text-[10px] font-black px-2 py-1 rounded shadow-sm text-gray-600 uppercase">
-                                            {item.status}
+                                        <span className="bg-white/90 backdrop-blur text-[10px] font-bold px-2 py-1 rounded shadow-sm text-gray-600 uppercase">
+                                            {item.status || 'Active'}
                                         </span>
                                     </div>
                                 </div>
 
                                 <div className="p-5 flex-1 flex flex-col">
                                     <h3 className="font-bold text-gray-900 truncate mb-1">{item.title}</h3>
-                                    {/* GÜNCELLEME: Biçimlendirilmiş Fiyat */}
-                                    <p className="text-lg font-black text-green-600 mb-4">{formatPrice(item.price)}</p>
+                                    {/* BİNLİK AYRAÇLI FİYAT */}
+                                    <p className="text-lg font-bold text-green-600 mb-4">{formatPrice(item.price)}</p>
 
                                     <div className="mt-auto pt-4 border-t flex gap-2">
-                                        {/* DÜZENLE BUTONU */}
                                         <Link
                                             href={`/listings/edit/${item.id}`}
-                                            className="flex-1 bg-gray-100 text-center py-2.5 rounded-xl font-black text-[11px] text-gray-700 hover:bg-gray-200 transition"
+                                            className="flex-1 bg-gray-100 text-center py-2.5 rounded-xl font-bold text-[11px] text-gray-700 hover:bg-gray-200 transition"
                                         >
                                             EDIT POST
                                         </Link>
                                         <Link
                                             href={`/listings/${item.id}`}
-                                            className="px-4 bg-white border border-gray-200 flex items-center justify-center rounded-xl hover:bg-gray-50 transition"
+                                            className="px-4 bg-white border border-gray-200 flex items-center justify-center rounded-xl hover:bg-gray-50 transition text-gray-400"
                                         >
-                                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                                         </Link>
                                     </div>
                                 </div>
