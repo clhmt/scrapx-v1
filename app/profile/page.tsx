@@ -30,7 +30,6 @@ export default function ProfilePage() {
 
     const [loading, setLoading] = useState(true);
 
-    // YENİ: Kullanıcının gerçek ismini metadata'dan al, yoksa e-postasının baş harflerini kullan
     const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "User";
 
     useEffect(() => {
@@ -86,7 +85,8 @@ export default function ProfilePage() {
                     if (usersData && usersData.length > 0) {
                         setFollowedUsers(usersData);
                     } else {
-                        setFollowedUsers(ids.map(id => ({ id, full_name: "Verified User", company_name: "Partner Company" })));
+                        // DÜZELTME: Eski orijinal "Mehmet" tasarımına geri dönüldü
+                        setFollowedUsers(ids.map(id => ({ id, full_name: "Mehmet", company_name: "MNT Paper and Plastics" })));
                     }
                 } else {
                     setFollowedUsers([]);
@@ -112,14 +112,12 @@ export default function ProfilePage() {
         <div className="min-h-screen bg-gray-50 pb-20">
             <Navbar />
 
-            {/* DİNAMİK KİŞİSEL BİLGİLER */}
             <div className="bg-white border-b py-10">
                 <div className="max-w-7xl mx-auto px-4 flex items-center gap-6">
                     <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-sm">
                         {userName[0].toUpperCase()}
                     </div>
                     <div>
-                        {/* DİNAMİK İSİM BURADA YAZDIRILIYOR */}
                         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{userName}</h1>
                         <div className="flex items-center gap-2 mt-1 mb-2">
                             <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Verified Member</span>
@@ -145,19 +143,13 @@ export default function ProfilePage() {
                     <button onClick={() => setActiveTab('saved')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'saved' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>Saved Offers</button>
                 </div>
 
-                {/* MY LISTINGS */}
                 {activeTab === 'listings' && (
                     <>
                         <div className="flex justify-end mb-6">
-                            <Link href="/listings/create" className="bg-black text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-gray-800 transition shadow-lg">
-                                + POST NEW LISTING
-                            </Link>
+                            <Link href="/listings/create" className="bg-black text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-gray-800 transition shadow-lg">+ POST NEW LISTING</Link>
                         </div>
-
                         {myListings.length === 0 ? (
-                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center">
-                                <p className="text-gray-400 font-bold italic">You haven't posted any listings yet.</p>
-                            </div>
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't posted any listings yet.</p></div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                 {myListings.map((item) => (
@@ -181,19 +173,13 @@ export default function ProfilePage() {
                     </>
                 )}
 
-                {/* MY WANTED REQUESTS */}
                 {activeTab === 'wanted' && (
                     <>
                         <div className="flex justify-end mb-6">
-                            <Link href="/wanted/create" className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-blue-700 transition shadow-lg">
-                                + POST WANTED REQUEST
-                            </Link>
+                            <Link href="/wanted/create" className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-blue-700 transition shadow-lg">+ POST WANTED REQUEST</Link>
                         </div>
-
                         {myWantedPosts.length === 0 ? (
-                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center">
-                                <p className="text-gray-400 font-bold italic">You haven't posted any wanted requests yet.</p>
-                            </div>
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't posted any wanted requests yet.</p></div>
                         ) : (
                             <div className="grid grid-cols-1 gap-4">
                                 {myWantedPosts.map((item) => (
@@ -217,31 +203,20 @@ export default function ProfilePage() {
                     </>
                 )}
 
-                {/* SAVED OFFERS */}
                 {activeTab === 'saved' && (
                     <>
                         {savedListings.length === 0 ? (
-                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center">
-                                <p className="text-gray-400 font-bold italic">You haven't saved any offers yet. Click the heart icon on listings to save them.</p>
-                            </div>
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't saved any offers yet.</p></div>
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                                 {savedListings.map((item) => (
                                     <Link href={`/listings/${item.id}`} key={item.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col group">
                                         <div className="h-56 bg-gray-100 relative overflow-hidden">
                                             {item.images?.[0] ? <img src={item.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-gray-300 font-black italic">ScrapX</div>}
-                                            <div className="absolute top-3 left-3"><span className="bg-black/70 backdrop-blur-md text-white px-2 py-1 text-[9px] font-black rounded uppercase">{item.condition || 'Scrap'}</span></div>
                                         </div>
                                         <div className="p-5 flex-1 flex flex-col">
                                             <h3 className="font-bold text-gray-900 text-lg truncate mb-1">{item.title}</h3>
-                                            <p className="text-xs text-gray-400 font-bold mb-4">📍 {item.city}, {item.country}</p>
-                                            <div className="mt-auto pt-4 border-t flex justify-between items-end">
-                                                <div>
-                                                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-tighter">Price</p>
-                                                    <span className="text-xl font-black text-green-600">{formatPrice(item.price)}</span>
-                                                </div>
-                                                <span className="text-xs font-black text-gray-900 bg-gray-50 px-2 py-1 rounded">{item.quantity} {item.unit}</span>
-                                            </div>
+                                            <p className="text-xl font-black text-green-600 mb-4">{formatPrice(item.price)}</p>
                                         </div>
                                     </Link>
                                 ))}
@@ -254,24 +229,21 @@ export default function ProfilePage() {
                 {activeTab === 'following' && (
                     <>
                         {followedUsers.length === 0 ? (
-                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center">
-                                <p className="text-gray-400 font-bold italic">You are not following anyone yet.</p>
-                            </div>
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You are not following anyone yet.</p></div>
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                 {followedUsers.map((u) => (
                                     <div key={u.id} className="bg-white p-8 rounded-3xl border border-gray-200 flex flex-col items-center text-center shadow-sm hover:shadow-md transition">
                                         <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
-                                            {u.full_name?.[0]?.toUpperCase() || 'U'}
+                                            {u.full_name?.[0]?.toUpperCase() || 'M'}
                                         </div>
-                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Verified User'}</h3>
-                                        <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'Partner Company'}</p>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Mehmet'}</h3>
+                                        <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'MNT Paper and Plastics'}</p>
 
-                                        <button className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-xl font-black w-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                                        <button className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-xl font-black w-full shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                                             Message (Premium)
                                         </button>
-                                        <button className="mt-3 text-xs font-bold text-gray-400 hover:text-gray-600 transition">View Seller Offers</button>
                                     </div>
                                 ))}
                             </div>
@@ -281,9 +253,7 @@ export default function ProfilePage() {
 
                 {/* FOLLOWERS */}
                 {activeTab === 'followers' && (
-                    <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center">
-                        <p className="text-gray-400 font-bold italic">Users following you will appear here.</p>
-                    </div>
+                    <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">Users following you will appear here.</p></div>
                 )}
             </div>
         </div>
