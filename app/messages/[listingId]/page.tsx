@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
-import Navbar from "@/components/Navbar"; // <-- EKSİK OLAN HAYATİ SATIR EKLENDİ
+import Navbar from "@/components/Navbar";
 import Link from "next/link";
 
 const formatPrice = (price: number) => {
@@ -21,7 +21,6 @@ const filterContactInfo = (text: string) => {
 
 export default function ChatPage() {
     const params = useParams();
-    // Klasör ismine uyum sağlamak için hem listingId hem id kontrol ediliyor
     const listingId = params.listingId || params.id;
 
     const router = useRouter();
@@ -52,7 +51,10 @@ export default function ChatPage() {
 
         // 1. İlanı bul
         const { data: listingData } = await supabase.from("listings").select("*").eq("id", listingId).single();
-        if (!listingData) return setLoading(false);
+        if (!listingData) {
+            alert("Error: Listing not found.");
+            return setLoading(false);
+        }
         setListing(listingData);
 
         // 2. Kullanıcı Satıcı mı Alıcı mı?
@@ -74,9 +76,17 @@ export default function ChatPage() {
         if (existingConv) {
             convId = existingConv.id;
         } else {
-            const { data: newConv } = await supabase.from("conversations")
+            // HATA YAKALAMA BURADA BAŞLIYOR
+            const { data: newConv, error: convError } = await supabase.from("conversations")
                 .insert({ listing_id: listingId, buyer_id: user.id, seller_id: sellerId })
                 .select().single();
+
+            if (convError) {
+                console.error("Conversation Error:", convError);
+                alert("Sistem Hatası: Sohbet odası kurulamadı.\n\nSebep: " + convError.message + "\n\n(Bu büyük ihtimalle eski bir ilan ve satıcı hesabı veritabanından silinmiş. Lütfen platformda yeni bir ilan açıp onun üzerinden test yapın!)");
+                setLoading(false);
+                return;
+            }
             convId = newConv?.id;
         }
 
@@ -95,9 +105,15 @@ export default function ChatPage() {
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newMessage.trim() || !conversationId) return;
+        if (!newMessage.trim()) return;
 
-        // SANSÜRLEME İŞLEMİ
+        // EĞER ODA KURULAMADIYSA MESAJ ATMASINI ENGELLE
+        if (!conversationId) {
+            alert("Hata: Sohbet odası henüz hazır değil. Sayfayı yenileyin veya farklı (yeni) bir ilan üzerinde test yapın.");
+            return;
+        }
+
+        // SANSÜRLEME İŞLEMİ (WhatsApp engeli)
         const safeContent = filterContactInfo(newMessage);
 
         const msgToSend = {
@@ -106,12 +122,15 @@ export default function ChatPage() {
             content: safeContent
         };
 
-        // Ekrana anında ekle
+        // Ekrana anında ekle (kullanıcı beklediğini hissetmesin)
         setMessages((prev) => [...prev, { ...msgToSend, created_at: new Date().toISOString() }]);
         setNewMessage("");
 
         // Veritabanına kaydet
-        await supabase.from("messages").insert(msgToSend);
+        const { error: msgError } = await supabase.from("messages").insert(msgToSend);
+        if (msgError) {
+            alert("Mesaj gönderilirken veritabanı hatası: " + msgError.message);
+        }
     };
 
     if (loading) return <div className="p-20 text-center font-bold">Connecting to secure chat...</div>;
@@ -132,13 +151,13 @@ export default function ChatPage() {
                             <p className="text-green-600 font-bold text-sm">{formatPrice(listing.price)} <span className="text-gray-400 text-xs">/ {listing.unit}</span></p>
                         </div>
                     </div>
-                    <Link href={`/listings/${listingId}`} className="text-xs font-bold text-gray-500 hover:text-gray-800 border px-4 py-2 rounded-lg">
+                    <Link href={`/listings/${listingId}`} className="text-xs font-bold text-gray-500 hover:text-gray-800 border px-4 py-2 rounded-lg bg-gray-50">
                         Close Chat
                     </Link>
                 </div>
             )}
 
-            {/* GÜVENLİK UYARISI */}
+            {/* GÜVENLİK UYARISI (WhatsApp Engelleyici) */}
             <div className="bg-yellow-50 border-b border-yellow-200 p-3 text-center">
                 <p className="text-xs font-bold text-yellow-800 flex items-center justify-center gap-2">
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
@@ -184,7 +203,8 @@ export default function ChatPage() {
                     />
                     <button
                         type="submit"
-                        disabled={!newMessage.trim()}
+                        // Oda hazır değilse butonu deaktif (soluk) yapıyoruz
+                        disabled={!newMessage.trim() || !conversationId}
                         className="w-14 h-14 bg-green-600 rounded-full flex items-center justify-center text-white shadow-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed absolute right-2 top-0.5"
                     >
                         <svg className="w-5 h-5 ml-1 transform rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
