@@ -80,16 +80,18 @@ function MarketplaceContent() {
             </div>
           </div>
           <div className="w-full md:w-2/5 mt-16 md:mt-0 relative hidden md:block">
-            {/* Hero Görseli Alanı (Scrapo'daki üçgen şekilli resimler gibi düşünülebilir) */}
+            {/* Hero Görseli Alanı - YENİ GÖRSELLER */}
             <div className="grid grid-cols-2 gap-4 transform rotate-3">
-              <img src="https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=500&q=80" className="rounded-2xl shadow-2xl border-4 border-[#0a2e1c] h-64 object-cover" alt="Plastic Scrap" />
-              <img src="https://images.unsplash.com/photo-1558611997-b6e22bc2120e?w=500&q=80" className="rounded-2xl shadow-2xl border-4 border-[#0a2e1c] h-64 object-cover mt-12" alt="Metal Scrap" />
+              {/* Daha sanatsal ve dokulu bir plastik görseli */}
+              <img src="https://images.unsplash.com/photo-1595278069441-2cf29f8005a4?w=500&q=80" className="rounded-2xl shadow-2xl border-4 border-[#0a2e1c] h-64 w-full object-cover" alt="Sorted Plastic Scrap" />
+              {/* Daha dinamik ve endüstriyel bir metal görseli (vinç) */}
+              <img src="https://images.unsplash.com/photo-1567789884554-0b844b597180?w=500&q=80" className="rounded-2xl shadow-2xl border-4 border-[#0a2e1c] h-64 w-full object-cover mt-12" alt="Metal Scrap Processing" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. STATS SECTION (Scrapo: 50000+ Businesses...) */}
+      {/* 2. STATS SECTION */}
       <div className="bg-[#0f3d26] py-12 border-y border-green-900/50">
         <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x divide-green-800">
           <div>
@@ -111,7 +113,7 @@ function MarketplaceContent() {
         </div>
       </div>
 
-      {/* 3. HOW IT WORKS (Scrapo Tarzı Adımlar) */}
+      {/* 3. HOW IT WORKS */}
       <div className="py-24 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
@@ -144,7 +146,7 @@ function MarketplaceContent() {
         </div>
       </div>
 
-      {/* 4. LIVE MARKETPLACE FEED (Mevcut Filtreli İlan Yapımız) */}
+      {/* 4. LIVE MARKETPLACE FEED */}
       <div id="marketplace" className="bg-[#F8F9FA] pb-20 pt-10">
         <div className="text-center mb-10">
           <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">Live Offers</h2>
@@ -216,7 +218,7 @@ function MarketplaceContent() {
         </div>
       </div>
 
-      {/* 5. TOP CATEGORIES (Scrapo Yan Menülü Kategori Stili) */}
+      {/* 5. TOP CATEGORIES */}
       <div className="py-24 bg-white border-t">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row gap-16 items-center">
           <div className="flex-1">
@@ -233,7 +235,8 @@ function MarketplaceContent() {
             </div>
           </div>
           <div className="flex-1 relative">
-            <img src="https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=800&q=80" className="rounded-3xl shadow-2xl" alt="Recycling Categories" />
+            {/* YENİ GÖRSEL: Küresel ticareti ve lojistiği simgeleyen devasa bir yük gemisi */}
+            <img src="https://images.unsplash.com/photo-1503596476-1c12a8ba09a9?w=800&q=80" className="rounded-3xl shadow-2xl w-full h-auto object-cover" alt="Global Recycling Trade and Logistics" />
           </div>
         </div>
       </div>
