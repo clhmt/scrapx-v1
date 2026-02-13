@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
+import Navbar from "@/components/Navbar"; // <-- EKSİK OLAN HAYATİ SATIR EKLENDİ
 import Link from "next/link";
 
 const formatPrice = (price: number) => {
@@ -11,16 +12,18 @@ const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-US').format(price) + " USD";
 };
 
-// YENİ: WhatsApp'a kaçmayı engelleyen Sansür Fonksiyonu
+// WhatsApp'a kaçmayı engelleyen Sansür Fonksiyonu
 const filterContactInfo = (text: string) => {
     let filtered = text.replace(/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/gi, ' [EMAIL HIDDEN BY SCRAPX] ');
-    // Basit telefon numarası yakalayıcı
     filtered = filtered.replace(/(\+?\d{1,4}[\s-]?)?(\(?\d{3}\)?[\s-]?)?[\d\s-]{7,10}/g, ' [PHONE HIDDEN BY SCRAPX] ');
     return filtered;
 };
 
 export default function ChatPage() {
-    const { id: listingId } = useParams();
+    const params = useParams();
+    // Klasör ismine uyum sağlamak için hem listingId hem id kontrol ediliyor
+    const listingId = params.listingId || params.id;
+
     const router = useRouter();
     const { user } = useAuth() as any;
 
@@ -34,7 +37,7 @@ export default function ChatPage() {
     useEffect(() => {
         if (!user) {
             router.push("/auth");
-        } else {
+        } else if (listingId) {
             initChat();
         }
     }, [user, listingId]);
@@ -54,7 +57,6 @@ export default function ChatPage() {
 
         // 2. Kullanıcı Satıcı mı Alıcı mı?
         const isSeller = user.id === listingData.user_id;
-        const buyerId = isSeller ? null : user.id; // Satıcı kendi ilanına bakıyorsa durum farklı ele alınmalı (şimdilik basit tutuyoruz)
         const sellerId = listingData.user_id;
 
         // Kendi kendine mesaj atmasını engelle
@@ -95,7 +97,7 @@ export default function ChatPage() {
         e.preventDefault();
         if (!newMessage.trim() || !conversationId) return;
 
-        // SANSÜRLEME İŞLEMİ BURADA YAPILIYOR
+        // SANSÜRLEME İŞLEMİ
         const safeContent = filterContactInfo(newMessage);
 
         const msgToSend = {
@@ -104,7 +106,7 @@ export default function ChatPage() {
             content: safeContent
         };
 
-        // Ekrana anında ekle (kullanıcı beklediğini hissetmesin)
+        // Ekrana anında ekle
         setMessages((prev) => [...prev, { ...msgToSend, created_at: new Date().toISOString() }]);
         setNewMessage("");
 
@@ -136,7 +138,7 @@ export default function ChatPage() {
                 </div>
             )}
 
-            {/* GÜVENLİK UYARISI (WhatsApp Engelleyici) */}
+            {/* GÜVENLİK UYARISI */}
             <div className="bg-yellow-50 border-b border-yellow-200 p-3 text-center">
                 <p className="text-xs font-bold text-yellow-800 flex items-center justify-center gap-2">
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
