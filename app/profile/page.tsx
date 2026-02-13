@@ -7,7 +7,6 @@ import { useAuth } from "@/components/AuthProvider";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-// Fiyat Biçimlendirme
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
     return new Intl.NumberFormat('en-US').format(price) + " USD";
@@ -22,9 +21,9 @@ export default function ProfilePage() {
     const [activeTab, setActiveTab] = useState(initialTab);
 
     const [myListings, setMyListings] = useState<any[]>([]);
-    const [savedListings, setSavedListings] = useState<any[]>([]); // YENİ: Kaydedilen ilanlar state'i
+    const [savedListings, setSavedListings] = useState<any[]>([]);
+    const [followedUsers, setFollowedUsers] = useState<any[]>([]); // YENİ: Takip edilen kişiler listesi
 
-    // YENİ: Takipçi state'leri
     const [followersCount, setFollowersCount] = useState(0);
     const [followingCount, setFollowingCount] = useState(0);
 
@@ -35,11 +34,10 @@ export default function ProfilePage() {
             router.push("/auth");
         } else if (user) {
             fetchData();
-            fetchFollowData(); // YENİ: Takip verilerini çek
+            fetchFollowData();
         }
     }, [user, authLoading, activeTab]);
 
-    // YENİ: Takipçi ve Takip Edilen sayılarını getiren fonksiyon
     const fetchFollowData = async () => {
         try {
             const { count: followers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id);
@@ -54,22 +52,14 @@ export default function ProfilePage() {
     const fetchData = async () => {
         setLoading(true);
         if (activeTab === 'listings') {
-            const { data } = await supabase
-                .from("listings")
-                .select("*")
-                .eq("user_id", user.id)
-                .order("created_at", { ascending: false });
+            const { data } = await supabase.from("listings").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
             setMyListings(data || []);
         }
-        // YENİ: Saved tab'ına tıklandığında kaydedilen ilanları getir
         else if (activeTab === 'saved') {
             try {
-                // Önce kullanıcının kaydettiği ilan ID'lerini bul (saved_listings tablosundan)
                 const { data: savedData } = await supabase.from("saved_listings").select("listing_id").eq("user_id", user.id);
-
                 if (savedData && savedData.length > 0) {
                     const listingIds = savedData.map(s => s.listing_id);
-                    // O ID'lere sahip ilanları çek
                     const { data: listingsData } = await supabase.from("listings").select("*").in("id", listingIds).order("created_at", { ascending: false });
                     setSavedListings(listingsData || []);
                 } else {
@@ -77,6 +67,27 @@ export default function ProfilePage() {
                 }
             } catch (error) {
                 console.error("Saved listings error:", error);
+            }
+        }
+        // YENİ: Following (Takip Edilenler) sekmesi için verileri getir
+        else if (activeTab === 'following') {
+            try {
+                const { data: followData } = await supabase.from("follows").select("following_id").eq("follower_id", user.id);
+                if (followData && followData.length > 0) {
+                    const ids = followData.map(f => f.following_id);
+                    // Veritabanında users tablosu varsa oradan çekiyoruz, yoksa fallback (Mehmet) atıyoruz.
+                    const { data: usersData } = await supabase.from("users").select("*").in("id", ids);
+                    if (usersData && usersData.length > 0) {
+                        setFollowedUsers(usersData);
+                    } else {
+                        // Users tablosu boşsa, görsel amaçlı Dummy data oluştur
+                        setFollowedUsers(ids.map(id => ({ id, full_name: "Mehmet", company_name: "MNT Paper and Plastics" })));
+                    }
+                } else {
+                    setFollowedUsers([]);
+                }
+            } catch (error) {
+                console.error("Following error:", error);
             }
         }
         setLoading(false);
@@ -107,10 +118,14 @@ export default function ProfilePage() {
                             <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Verified Member</span>
                             <span className="text-gray-400 text-sm">• {user?.email}</span>
                         </div>
-                        {/* YENİ: Takipçi / Takip Edilen Bölümü */}
+                        {/* DÜZELTME: Followers ve Following artık Tıklanabilir! */}
                         <div className="flex gap-4 text-sm font-bold text-gray-700">
-                            <span>{followersCount} <span className="text-gray-400 font-normal">Followers</span></span>
-                            <span>{followingCount} <span className="text-gray-400 font-normal">Following</span></span>
+                            <span className="cursor-pointer hover:text-green-600 transition" onClick={() => setActiveTab('followers')}>
+                                {followersCount} <span className="text-gray-400 font-normal hover:underline">Followers</span>
+                            </span>
+                            <span className="cursor-pointer hover:text-green-600 transition" onClick={() => setActiveTab('following')}>
+                                {followingCount} <span className="text-gray-400 font-normal hover:underline">Following</span>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -125,7 +140,7 @@ export default function ProfilePage() {
                     <button onClick={() => setActiveTab('saved')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'saved' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>Saved Offers</button>
                 </div>
 
-                {/* TAB: MY LISTINGS (Hiçbir şeyi değişmedi) */}
+                {/* TAB: MY LISTINGS */}
                 {activeTab === 'listings' && (
                     <>
                         <div className="flex justify-end mb-6">
@@ -139,33 +154,19 @@ export default function ProfilePage() {
                                 <p className="text-gray-400 font-bold italic">You haven't posted any listings yet.</p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                 {myListings.map((item) => (
                                     <div key={item.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col">
                                         <div className="h-48 bg-gray-100 relative">
-                                            {item.images?.[0] ? (
-                                                <img src={item.images[0]} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-gray-300 font-black text-xs uppercase">No Photo</div>
-                                            )}
-                                            <div className="absolute top-3 right-3">
-                                                <span className="bg-white/90 backdrop-blur text-[10px] font-bold px-3 py-1 rounded shadow-sm text-gray-800 uppercase">
-                                                    {item.material_type || 'Metal'}
-                                                </span>
-                                            </div>
+                                            {item.images?.[0] ? <img src={item.images[0]} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-300 font-black text-xs uppercase">No Photo</div>}
+                                            <div className="absolute top-3 right-3"><span className="bg-white/90 backdrop-blur text-[10px] font-bold px-3 py-1 rounded shadow-sm text-gray-800 uppercase">{item.material_type || 'Metal'}</span></div>
                                         </div>
-
                                         <div className="p-5 flex-1 flex flex-col">
                                             <h3 className="font-bold text-gray-900 truncate mb-1">{item.title}</h3>
                                             <p className="text-xl font-black text-green-600 mb-4">{formatPrice(item.price)}</p>
-
                                             <div className="mt-auto flex gap-2 border-t pt-4">
-                                                <Link href={`/listings/edit/${item.id}`} className="flex-1 bg-gray-100 text-center py-2.5 rounded-lg font-bold text-xs text-gray-700 hover:bg-gray-200 transition">
-                                                    Edit Post
-                                                </Link>
-                                                <button onClick={() => handleDelete(item.id)} className="flex-1 bg-red-50 text-center py-2.5 rounded-lg font-bold text-xs text-red-600 hover:bg-red-100 transition">
-                                                    Delete
-                                                </button>
+                                                <Link href={`/listings/edit/${item.id}`} className="flex-1 bg-gray-100 text-center py-2.5 rounded-lg font-bold text-xs text-gray-700 hover:bg-gray-200 transition">Edit Post</Link>
+                                                <button onClick={() => handleDelete(item.id)} className="flex-1 bg-red-50 text-center py-2.5 rounded-lg font-bold text-xs text-red-600 hover:bg-red-100 transition">Delete</button>
                                             </div>
                                         </div>
                                     </div>
@@ -182,7 +183,7 @@ export default function ProfilePage() {
                     </div>
                 )}
 
-                {/* YENİ TAB: SAVED OFFERS */}
+                {/* TAB: SAVED OFFERS (GÜNCELLENDİ: Ana Sayfa Tasarımına Çekildi) */}
                 {activeTab === 'saved' && (
                     <>
                         {savedListings.length === 0 ? (
@@ -190,31 +191,65 @@ export default function ProfilePage() {
                                 <p className="text-gray-400 font-bold italic">You haven't saved any offers yet. Click the heart icon on listings to save them.</p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                                 {savedListings.map((item) => (
-                                    <div key={item.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col">
-                                        <div className="h-48 bg-gray-100 relative">
-                                            {item.images?.[0] ? (
-                                                <img src={item.images[0]} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-gray-300 font-black text-xs uppercase">No Photo</div>
-                                            )}
+                                    <Link href={`/listings/${item.id}`} key={item.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col group">
+                                        <div className="h-56 bg-gray-100 relative overflow-hidden">
+                                            {item.images?.[0] ? <img src={item.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-gray-300 font-black italic">ScrapX</div>}
+                                            <div className="absolute top-3 left-3"><span className="bg-black/70 backdrop-blur-md text-white px-2 py-1 text-[9px] font-black rounded uppercase">{item.condition || 'Scrap'}</span></div>
                                         </div>
                                         <div className="p-5 flex-1 flex flex-col">
-                                            <h3 className="font-bold text-gray-900 truncate mb-1">{item.title}</h3>
-                                            <p className="text-xl font-black text-green-600 mb-4">{formatPrice(item.price)}</p>
-
-                                            <div className="mt-auto flex gap-2 border-t pt-4">
-                                                <Link href={`/listings/${item.id}`} className="w-full bg-green-600 text-white text-center py-2.5 rounded-lg font-bold text-xs hover:bg-green-700 transition">
-                                                    View Offer
-                                                </Link>
+                                            <h3 className="font-bold text-gray-900 text-lg truncate mb-1">{item.title}</h3>
+                                            <p className="text-xs text-gray-400 font-bold mb-4">📍 {item.city}, {item.country}</p>
+                                            <div className="mt-auto pt-4 border-t flex justify-between items-end">
+                                                <div>
+                                                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-tighter">Price</p>
+                                                    <span className="text-xl font-black text-green-600">{formatPrice(item.price)}</span>
+                                                </div>
+                                                <span className="text-xs font-black text-gray-900 bg-gray-50 px-2 py-1 rounded">{item.quantity} {item.unit}</span>
                                             </div>
                                         </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {/* YENİ TAB: FOLLOWING (Takip Edilen Satıcılar ve Premium Mesaj Butonu) */}
+                {activeTab === 'following' && (
+                    <>
+                        {followedUsers.length === 0 ? (
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center">
+                                <p className="text-gray-400 font-bold italic">You are not following anyone yet.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                {followedUsers.map((u) => (
+                                    <div key={u.id} className="bg-white p-8 rounded-3xl border border-gray-200 flex flex-col items-center text-center shadow-sm hover:shadow-md transition">
+                                        <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
+                                            {u.full_name?.[0]?.toUpperCase() || 'M'}
+                                        </div>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Mehmet'}</h3>
+                                        <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'MNT Paper and Plastics'}</p>
+
+                                        <button className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-xl font-black w-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                                            Message (Premium)
+                                        </button>
+                                        <button className="mt-3 text-xs font-bold text-gray-400 hover:text-gray-600 transition">View Seller Offers</button>
                                     </div>
                                 ))}
                             </div>
                         )}
                     </>
+                )}
+
+                {/* YENİ TAB: FOLLOWERS (Seni Takip Edenler) */}
+                {activeTab === 'followers' && (
+                    <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center">
+                        <p className="text-gray-400 font-bold italic">Users following you will appear here.</p>
+                    </div>
                 )}
             </div>
         </div>

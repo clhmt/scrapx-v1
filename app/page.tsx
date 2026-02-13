@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useAuth } from "@/components/AuthProvider"; // YENİ: Kullanıcı giriş kontrolü için eklendi
+import { useAuth } from "@/components/AuthProvider";
 
 const formatPrice = (price: number) => {
   if (!price) return "0 USD";
@@ -13,7 +13,7 @@ const formatPrice = (price: number) => {
 };
 
 function MarketplaceContent() {
-  const { user } = useAuth() as any; // YENİ: Giriş yapan kullanıcıyı yakala
+  const { user } = useAuth() as any;
   const searchParams = useSearchParams();
   const urlSearch = searchParams.get("search")?.toLowerCase() || "";
   const [viewMode, setViewMode] = useState<'sell' | 'buy'>('sell');
@@ -55,7 +55,6 @@ function MarketplaceContent() {
     <div className={`min-h-screen ${user ? 'bg-[#F8F9FA]' : 'bg-white'}`}>
       <Navbar />
 
-      {/* SADECE GİRİŞ YAPMAMIŞ (ZİYARETÇİ) KULLANICILAR İÇİN GÖSTERİLECEK BÖLÜM */}
       {!user && (
         <>
           <div className="relative bg-[#0a2e1c] overflow-hidden">
@@ -98,19 +97,42 @@ function MarketplaceContent() {
             </div>
           </div>
 
+          {/* DÜZELTİLEN HOW IT WORKS KISMI */}
           <div className="py-24 bg-gray-50">
             <div className="max-w-7xl mx-auto px-4">
               <div className="text-center mb-16">
                 <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">How It Works</h2>
                 <div className="w-24 h-1 bg-green-500 mx-auto mt-4 rounded-full"></div>
               </div>
-              {/* ... (How it works içerikleri) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
+                <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition duration-500">
+                  <div className="w-20 h-20 bg-green-100 text-green-600 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  </div>
+                  <h3 className="text-xl font-black mb-3">1. Post Your Offer</h3>
+                  <p className="text-gray-500 font-medium">Join the marketplace and post the materials you want to sell or buy in less than a minute.</p>
+                </div>
+                <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition duration-500">
+                  <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 -rotate-3">
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                  </div>
+                  <h3 className="text-xl font-black mb-3">2. Negotiate Deals</h3>
+                  <p className="text-gray-500 font-medium">Chat with verified international buyers and sellers in real-time to get the best price.</p>
+                </div>
+                <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition duration-500">
+                  <div className="w-20 h-20 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6 rotate-3">
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </div>
+                  <h3 className="text-xl font-black mb-3">3. Trade Globally</h3>
+                  <p className="text-gray-500 font-medium">Sell or buy products directly from partners in your country and around the world.</p>
+                </div>
+              </div>
             </div>
           </div>
         </>
       )}
 
-      {/* HERKESE GÖZÜKEN VE GİRİŞ YAPINCA İLK AÇILAN ESKİ İLAN (MARKETPLACE) EKRANI */}
+      {/* İLAN PANOSU */}
       <div id="marketplace" className={`${user ? 'pt-8' : 'pt-20'} pb-20 bg-[#F8F9FA]`}>
 
         {!user && (
@@ -120,7 +142,6 @@ function MarketplaceContent() {
           </div>
         )}
 
-        {/* FİLTRE BARI */}
         <div className={`bg-white border-y sticky top-16 z-40 shadow-sm ${user ? 'mb-8' : 'mb-10'}`}>
           <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
             <div className="flex bg-gray-100 p-1 rounded-xl w-fit">
@@ -145,7 +166,6 @@ function MarketplaceContent() {
           </div>
         </div>
 
-        {/* İLAN KARTLARI (ESKİ SİSTEM) */}
         <div className="max-w-7xl mx-auto px-4">
           {loading ? (
             <div className="flex justify-center py-20 text-green-600 font-bold">Loading Marketplace...</div>
@@ -185,7 +205,6 @@ function MarketplaceContent() {
         </div>
       </div>
 
-      {/* SADECE GİRİŞ YAPMAMIŞLARA GÖZÜKECEK KATEGORİ ALANI */}
       {!user && (
         <div className="py-24 bg-white border-t">
           <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row gap-16 items-center">
