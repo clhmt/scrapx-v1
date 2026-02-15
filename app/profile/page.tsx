@@ -7,24 +7,49 @@ import { useAuth } from "@/components/AuthProvider";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
+
+interface ListingItem {
+    id: string;
+    title: string;
+    price: number;
+    material_type?: string;
+    images?: string[];
+}
+
+interface WantedItem {
+    id: string;
+    title: string;
+    category?: string;
+    condition?: string;
+    country?: string;
+    target_price?: number;
+}
+
+interface SocialUser {
+    id: string;
+    full_name?: string;
+    company_name?: string;
+    email?: string;
+}
+
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
     return new Intl.NumberFormat('en-US').format(price) + " USD";
 };
 
 export default function ProfilePage() {
-    const { user, loading: authLoading } = useAuth() as any;
+    const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
 
     const initialTab = searchParams.get('view') || 'listings';
     const [activeTab, setActiveTab] = useState(initialTab);
 
-    const [myListings, setMyListings] = useState<any[]>([]);
-    const [myWantedPosts, setMyWantedPosts] = useState<any[]>([]);
-    const [savedListings, setSavedListings] = useState<any[]>([]);
-    const [followedUsers, setFollowedUsers] = useState<any[]>([]);
-    const [followersUsers, setFollowersUsers] = useState<any[]>([]);
+    const [myListings, setMyListings] = useState<ListingItem[]>([]);
+    const [myWantedPosts, setMyWantedPosts] = useState<WantedItem[]>([]);
+    const [savedListings, setSavedListings] = useState<ListingItem[]>([]);
+    const [followedUsers, setFollowedUsers] = useState<SocialUser[]>([]);
+    const [followersUsers, setFollowersUsers] = useState<SocialUser[]>([]);
 
     const [followersCount, setFollowersCount] = useState(0);
     const [followingCount, setFollowingCount] = useState(0);
@@ -53,6 +78,70 @@ export default function ProfilePage() {
         }
     };
 
+    const mapUsersByIds = async (ids: string[]) => {
+        if (!ids.length) return [];
+
+        const { data: usersData, error } = await supabase
+            .from("users")
+            .select("id, full_name, company_name, email")
+            .in("id", ids);
+
+        if (error) {
+            console.error("Users fetch error:", error);
+            return ids.map((id) => ({ id, full_name: "ScrapX User", company_name: "ScrapX Member" }));
+        }
+
+        const usersMap = new Map((usersData || []).map((record) => [record.id, record]));
+        return ids.map((id) => {
+            const profile = usersMap.get(id);
+            const displayName = profile?.full_name?.trim() || profile?.email?.split("@")[0] || "ScrapX User";
+
+            return {
+                id,
+                full_name: displayName,
+                company_name: profile?.company_name || "ScrapX Member"
+            };
+        });
+    };
+
+    const fetchFollowers = async () => {
+        try {
+            const { data: followData, error } = await supabase
+                .from("follows")
+                .select("follower_id")
+                .eq("following_id", user.id)
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+
+            const followerIds = (followData || []).map((f) => f.follower_id).filter(Boolean);
+            const users = await mapUsersByIds(followerIds);
+            setFollowersUsers(users);
+        } catch (error) {
+            console.error("Followers error:", error);
+            setFollowersUsers([]);
+        }
+    };
+
+    const fetchFollowing = async () => {
+        try {
+            const { data: followData, error } = await supabase
+                .from("follows")
+                .select("following_id")
+                .eq("follower_id", user.id)
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+
+            const followingIds = (followData || []).map((f) => f.following_id).filter(Boolean);
+            const users = await mapUsersByIds(followingIds);
+            setFollowedUsers(users);
+        } catch (error) {
+            console.error("Following error:", error);
+            setFollowedUsers([]);
+        }
+    };
+
     const fetchData = async () => {
         setLoading(true);
         if (activeTab === 'listings') {
@@ -78,40 +167,10 @@ export default function ProfilePage() {
             }
         }
         else if (activeTab === 'following') {
-            try {
-                const { data: followData } = await supabase.from("follows").select("following_id").eq("follower_id", user.id);
-                if (followData && followData.length > 0) {
-                    const ids = followData.map(f => f.following_id);
-                    const { data: usersData } = await supabase.from("users").select("*").in("id", ids);
-                    if (usersData && usersData.length > 0) {
-                        setFollowedUsers(usersData);
-                    } else {
-                        setFollowedUsers(ids.map(id => ({ id, full_name: "Unknown User", company_name: "" })));
-                    }
-                } else {
-                    setFollowedUsers([]);
-                }
-            } catch (error) {
-                console.error("Following error:", error);
-            }
+            await fetchFollowing();
         }
         else if (activeTab === 'followers') {
-            try {
-                const { data: followData } = await supabase.from("follows").select("follower_id").eq("following_id", user.id);
-                if (followData && followData.length > 0) {
-                    const ids = followData.map(f => f.follower_id);
-                    const { data: usersData } = await supabase.from("users").select("*").in("id", ids);
-                    if (usersData && usersData.length > 0) {
-                        setFollowersUsers(usersData);
-                    } else {
-                        setFollowersUsers(ids.map(id => ({ id, full_name: "Unknown User", company_name: "" })));
-                    }
-                } else {
-                    setFollowersUsers([]);
-                }
-            } catch (error) {
-                console.error("Followers error:", error);
-            }
+            await fetchFollowers();
         }
         setLoading(false);
     };
@@ -167,7 +226,7 @@ export default function ProfilePage() {
                             <Link href="/listings/create" className="bg-black text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-gray-800 transition shadow-lg">+ POST NEW LISTING</Link>
                         </div>
                         {myListings.length === 0 ? (
-                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't posted any listings yet.</p></div>
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven&apos;t posted any listings yet.</p></div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                 {myListings.map((item) => (
@@ -197,7 +256,7 @@ export default function ProfilePage() {
                             <Link href="/wanted/create" className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-blue-700 transition shadow-lg">+ POST WANTED REQUEST</Link>
                         </div>
                         {myWantedPosts.length === 0 ? (
-                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't posted any wanted requests yet.</p></div>
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven&apos;t posted any wanted requests yet.</p></div>
                         ) : (
                             <div className="grid grid-cols-1 gap-4">
                                 {myWantedPosts.map((item) => (
@@ -224,7 +283,7 @@ export default function ProfilePage() {
                 {activeTab === 'saved' && (
                     <>
                         {savedListings.length === 0 ? (
-                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't saved any offers yet.</p></div>
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven&apos;t saved any offers yet.</p></div>
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                                 {savedListings.map((item) => (
@@ -253,10 +312,10 @@ export default function ProfilePage() {
                                 {followedUsers.map((u) => (
                                     <div key={u.id} className="bg-white p-8 rounded-3xl border border-gray-200 flex flex-col items-center text-center shadow-sm hover:shadow-md transition">
                                         <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
-                                            {u.full_name?.[0]?.toUpperCase() || 'M'}
+                                            {u.full_name?.[0]?.toUpperCase() || 'S'}
                                         </div>
-                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Mehmet'}</h3>
-                                        <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'MNT Paper and Plastics'}</p>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'ScrapX User'}</h3>
+                                        <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'ScrapX Member'}</p>
 
                                         <Link href={`/messages/direct/${u.id}`} className="w-full block text-center bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700">Message</Link>
                                     </div>
@@ -278,7 +337,7 @@ export default function ProfilePage() {
                                         <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
                                             {u.full_name?.[0]?.toUpperCase() || 'U'}
                                         </div>
-                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Unknown User'}</h3>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'ScrapX User'}</h3>
                                         <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'ScrapX Member'}</p>
                                         <Link href={`/messages/direct/${u.id}`} className="w-full block text-center bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700">Message</Link>
                                     </div>
