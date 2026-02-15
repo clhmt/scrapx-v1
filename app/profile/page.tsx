@@ -68,6 +68,8 @@ export default function ProfilePage() {
     }, [user, authLoading, activeTab]);
 
     const fetchFollowData = async () => {
+        if (!user?.id) return;
+
         try {
             const { count: followers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id);
             const { count: following } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id);
@@ -105,6 +107,8 @@ export default function ProfilePage() {
     };
 
     const fetchFollowers = async () => {
+        if (!user?.id) return;
+
         try {
             const { data: followData, error } = await supabase
                 .from("follows")
@@ -124,6 +128,8 @@ export default function ProfilePage() {
     };
 
     const fetchFollowing = async () => {
+        if (!user?.id) return;
+
         try {
             const { data: followData, error } = await supabase
                 .from("follows")
@@ -143,6 +149,8 @@ export default function ProfilePage() {
     };
 
     const fetchData = async () => {
+        if (!user?.id) return;
+
         setLoading(true);
         if (activeTab === 'listings') {
             const { data } = await supabase.from("listings").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
@@ -267,7 +275,7 @@ export default function ProfilePage() {
                                                 <span className="bg-gray-50 text-gray-500 text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider">{item.condition}</span>
                                             </div>
                                             <h3 className="text-xl font-black text-gray-900 mb-1">{item.title}</h3>
-                                            <p className="text-sm text-gray-400 font-bold">📍 Wanted in {item.country} • Target: <span className="text-green-600">${formatPrice(item.target_price)}</span></p>
+                                            <p className="text-sm text-gray-400 font-bold">📍 Wanted in {item.country} • Target: <span className="text-green-600">${formatPrice(item.target_price ?? 0)}</span></p>
                                         </div>
                                         <div className="flex gap-2 w-full md:w-auto mt-4 md:mt-0">
                                             <Link href={`/wanted/edit/${item.id}`} className="flex-1 md:flex-none bg-gray-100 text-center px-8 py-3 rounded-xl font-bold text-xs text-gray-700 hover:bg-gray-200 transition">Edit</Link>
