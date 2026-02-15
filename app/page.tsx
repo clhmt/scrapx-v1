@@ -1,239 +1,261 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabaseClient";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 const formatPrice = (price: number) => {
   if (!price) return "0 USD";
   return new Intl.NumberFormat('en-US').format(price) + " USD";
 };
 
-function MarketplaceContent() {
-  const { user } = useAuth() as any;
+export default function ProfilePage() {
+  const { user, loading: authLoading } = useAuth() as any;
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const urlSearch = searchParams.get("search")?.toLowerCase() || "";
-  const [viewMode, setViewMode] = useState<'sell' | 'buy'>('sell');
+
+  const initialTab = searchParams.get('view') || 'listings';
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  const [myListings, setMyListings] = useState<any[]>([]);
+  const [myWantedPosts, setMyWantedPosts] = useState<any[]>([]);
+  const [savedListings, setSavedListings] = useState<any[]>([]);
+  const [followedUsers, setFollowedUsers] = useState<any[]>([]);
+
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+
   const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<any[]>([]);
 
-  const [filterCategory, setFilterCategory] = useState("");
-  const [filterCondition, setFilterCondition] = useState("");
-  const [filterCountry, setFilterCountry] = useState("");
-
-  const categories = [
-    "-- PLASTICS --", "PET", "HDPE", "LDPE", "LLDPE", "PP", "PS", "PVC", "ABS", "PC", "Nylon", "Mixed Plastic",
-    "-- METALS --", "Copper", "Aluminium", "Brass", "Stainless Steel", "Lead", "Zinc", "Iron & Steel", "E-Scrap"
-  ];
-  const conditions = ["Scrap", "Regrind", "Repro (Granules)", "Virgin", "Bales", "Rolls", "Loose"];
-  const countries = ["Turkey", "USA", "China", "Germany", "India", "UK", "Vietnam", "UAE", "Canada", "Global"];
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "User";
 
   useEffect(() => {
-    fetchData();
-  }, [viewMode]);
+    if (!authLoading && !user) {
+      router.push("/auth");
+    } else if (user) {
+      fetchData();
+      fetchFollowData();
+    }
+  }, [user, authLoading, activeTab]);
+
+  const fetchFollowData = async () => {
+    try {
+      const { count: followers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id);
+      const { count: following } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id);
+      setFollowersCount(followers || 0);
+      setFollowingCount(following || 0);
+    } catch (error) {
+      console.error("Follows error:", error);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
-    const table = viewMode === 'sell' ? 'listings' : 'wanted_posts';
-    const { data } = await supabase.from(table).select("*").eq("status", "active").order("created_at", { ascending: false });
-    setItems(data || []);
+    if (activeTab === 'listings') {
+      const { data } = await supabase.from("listings").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+      setMyListings(data || []);
+    }
+    else if (activeTab === 'wanted') {
+      const { data } = await supabase.from("wanted_posts").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+      setMyWantedPosts(data || []);
+    }
+    else if (activeTab === 'saved') {
+      try {
+        const { data: savedData } = await supabase.from("saved_listings").select("listing_id").eq("user_id", user.id);
+        if (savedData && savedData.length > 0) {
+          const listingIds = savedData.map(s => s.listing_id);
+          const { data: listingsData } = await supabase.from("listings").select("*").in("id", listingIds).order("created_at", { ascending: false });
+          setSavedListings(listingsData || []);
+        } else {
+          setSavedListings([]);
+        }
+      } catch (error) {
+        console.error("Saved listings error:", error);
+      }
+    }
+    else if (activeTab === 'following') {
+      try {
+        const { data: followData } = await supabase.from("follows").select("following_id").eq("follower_id", user.id);
+        if (followData && followData.length > 0) {
+          const ids = followData.map(f => f.following_id);
+          const { data: usersData } = await supabase.from("users").select("*").in("id", ids);
+          if (usersData && usersData.length > 0) {
+            setFollowedUsers(usersData);
+          } else {
+            // DÜZELTME: Eski orijinal "Mehmet" tasarımına geri dönüldü
+            setFollowedUsers(ids.map(id => ({ id, full_name: "Mehmet", company_name: "MNT Paper and Plastics" })));
+          }
+        } else {
+          setFollowedUsers([]);
+        }
+      } catch (error) {
+        console.error("Following error:", error);
+      }
+    }
     setLoading(false);
   };
 
-  const filteredItems = items.filter(item => {
-    const matchesSearch = urlSearch === "" || item.title?.toLowerCase().includes(urlSearch) || item.description?.toLowerCase().includes(urlSearch);
-    const matchesCategory = filterCategory === "" || item.category === filterCategory;
-    const matchesCondition = filterCondition === "" || item.condition === filterCondition;
-    const matchesCountry = filterCountry === "" || item.country === filterCountry;
-    return matchesSearch && matchesCategory && matchesCondition && matchesCountry;
-  });
+  const handleDelete = async (id: string, table: string) => {
+    const itemType = table === 'listings' ? 'listing' : 'wanted request';
+    if (confirm(`Are you sure you want to delete this ${itemType}?`)) {
+      await supabase.from(table).delete().eq("id", id);
+      fetchData();
+    }
+  };
+
+  if (authLoading || loading) return <div className="p-20 text-center font-black">LOADING PROFILE...</div>;
 
   return (
-    <div className={`min-h-screen ${user ? 'bg-[#F8F9FA]' : 'bg-white'}`}>
+    <div className="min-h-screen bg-gray-50 pb-20">
       <Navbar />
 
-      {!user && (
-        <>
-          <div className="relative bg-[#0a2e1c] overflow-hidden">
-            <div className="absolute inset-0 opacity-20">
-              <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-green-400/30 via-transparent to-transparent"></div>
-              <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-green-500 rounded-full blur-3xl opacity-20"></div>
+      <div className="bg-white border-b py-10">
+        <div className="max-w-7xl mx-auto px-4 flex items-center gap-6">
+          <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-sm">
+            {userName[0].toUpperCase()}
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{userName}</h1>
+            <div className="flex items-center gap-2 mt-1 mb-2">
+              <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Verified Member</span>
+              <span className="text-gray-400 text-sm">• {user?.email}</span>
             </div>
-            <div className="max-w-7xl mx-auto px-4 py-24 relative z-10 flex flex-col md:flex-row items-center">
-              <div className="w-full md:w-3/5 pr-0 md:pr-10">
-                <h1 className="text-5xl md:text-7xl font-black text-white leading-tight tracking-tighter mb-6">
-                  Global Recycling <br /> <span className="text-green-400">Marketplace</span>
-                </h1>
-                <p className="text-lg md:text-xl text-green-50 mb-10 max-w-lg font-medium leading-relaxed">
-                  Connect and trade directly with verified suppliers & buyers of recyclable plastics and metals worldwide.
-                </p>
-                <div className="flex gap-4">
-                  <Link href="/auth" className="bg-white text-[#0a2e1c] px-8 py-4 rounded-xl font-black hover:bg-green-50 transition shadow-lg">
-                    Join ScrapX
-                  </Link>
-                  <a href="#marketplace" className="bg-transparent border-2 border-green-400 text-green-400 px-8 py-4 rounded-xl font-black hover:bg-green-400 hover:text-[#0a2e1c] transition">
-                    Explore Offers
-                  </a>
-                </div>
-              </div>
-              <div className="w-full md:w-2/5 mt-16 md:mt-0 relative hidden md:block">
-                <div className="grid grid-cols-2 gap-4 transform rotate-3">
-                  <img src="https://images.unsplash.com/photo-1595278069441-2cf29f8005a4?w=500&q=80" className="rounded-2xl shadow-2xl border-4 border-[#0a2e1c] h-64 w-full object-cover" alt="Plastic" />
-                  <img src="https://images.unsplash.com/photo-1567789884554-0b844b597180?w=500&q=80" className="rounded-2xl shadow-2xl border-4 border-[#0a2e1c] h-64 w-full object-cover mt-12" alt="Metal" />
-                </div>
-              </div>
+            <div className="flex gap-4 text-sm font-bold text-gray-700">
+              <span className="cursor-pointer hover:text-green-600 transition" onClick={() => setActiveTab('followers')}>
+                {followersCount} <span className="text-gray-400 font-normal hover:underline">Followers</span>
+              </span>
+              <span className="cursor-pointer hover:text-green-600 transition" onClick={() => setActiveTab('following')}>
+                {followingCount} <span className="text-gray-400 font-normal hover:underline">Following</span>
+              </span>
             </div>
           </div>
-
-          <div className="bg-[#0f3d26] py-12 border-y border-green-900/50">
-            <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x divide-green-800">
-              <div><p className="text-3xl md:text-5xl font-black text-white mb-2">12,000+</p><p className="text-green-400 font-bold text-sm uppercase tracking-widest">Registered Businesses</p></div>
-              <div><p className="text-3xl md:text-5xl font-black text-white mb-2">85+</p><p className="text-green-400 font-bold text-sm uppercase tracking-widest">Countries</p></div>
-              <div><p className="text-3xl md:text-5xl font-black text-white mb-2">2M+</p><p className="text-green-400 font-bold text-sm uppercase tracking-widest">Tons Listed</p></div>
-              <div><p className="text-3xl md:text-5xl font-black text-white mb-2">24/7</p><p className="text-green-400 font-bold text-sm uppercase tracking-widest">Real-time Trading</p></div>
-            </div>
-          </div>
-
-          {/* DÜZELTİLEN HOW IT WORKS KISMI */}
-          <div className="py-24 bg-gray-50">
-            <div className="max-w-7xl mx-auto px-4">
-              <div className="text-center mb-16">
-                <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">How It Works</h2>
-                <div className="w-24 h-1 bg-green-500 mx-auto mt-4 rounded-full"></div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
-                <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition duration-500">
-                  <div className="w-20 h-20 bg-green-100 text-green-600 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                  </div>
-                  <h3 className="text-xl font-black mb-3">1. Post Your Offer</h3>
-                  <p className="text-gray-500 font-medium">Join the marketplace and post the materials you want to sell or buy in less than a minute.</p>
-                </div>
-                <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition duration-500">
-                  <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 -rotate-3">
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                  </div>
-                  <h3 className="text-xl font-black mb-3">2. Negotiate Deals</h3>
-                  <p className="text-gray-500 font-medium">Chat with verified international buyers and sellers in real-time to get the best price.</p>
-                </div>
-                <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition duration-500">
-                  <div className="w-20 h-20 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6 rotate-3">
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  </div>
-                  <h3 className="text-xl font-black mb-3">3. Trade Globally</h3>
-                  <p className="text-gray-500 font-medium">Sell or buy products directly from partners in your country and around the world.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* İLAN PANOSU */}
-      <div id="marketplace" className={`${user ? 'pt-8' : 'pt-20'} pb-20 bg-[#F8F9FA]`}>
-
-        {!user && (
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">Live Offers</h2>
-            <p className="text-gray-500 mt-2 font-bold">Browse the latest listings on ScrapX</p>
-          </div>
-        )}
-
-        <div className={`bg-white border-y sticky top-16 z-40 shadow-sm ${user ? 'mb-8' : 'mb-10'}`}>
-          <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
-            <div className="flex bg-gray-100 p-1 rounded-xl w-fit">
-              <button onClick={() => setViewMode('sell')} className={`px-5 py-2 rounded-lg text-xs font-black transition-all ${viewMode === 'sell' ? 'bg-white text-green-600 shadow-md scale-105' : 'text-gray-500 hover:text-gray-800'}`}>FOR SALE</button>
-              <button onClick={() => setViewMode('buy')} className={`px-5 py-2 rounded-lg text-xs font-black transition-all ${viewMode === 'buy' ? 'bg-white text-blue-600 shadow-md scale-105' : 'text-gray-500 hover:text-gray-800'}`}>WANTED</button>
-            </div>
-
-            <div className="hidden md:flex items-center gap-4">
-              <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="bg-gray-50 border-none rounded-lg px-4 py-2 text-xs font-bold text-gray-700 outline-none cursor-pointer">
-                <option value="">All Categories</option>
-                {categories.map(c => <option key={c} value={c} disabled={c.startsWith('--')}>{c}</option>)}
-              </select>
-              <select value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} className="bg-gray-50 border-none rounded-lg px-4 py-2 text-xs font-bold text-gray-700 outline-none cursor-pointer">
-                <option value="">Any Condition</option>
-                {conditions.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <select value={filterCountry} onChange={(e) => setFilterCountry(e.target.value)} className="bg-gray-50 border-none rounded-lg px-4 py-2 text-xs font-bold text-gray-700 outline-none cursor-pointer">
-                <option value="">Global</option>
-                {countries.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="max-w-7xl mx-auto px-4">
-          {loading ? (
-            <div className="flex justify-center py-20 text-green-600 font-bold">Loading Marketplace...</div>
-          ) : (
-            <div className={viewMode === 'sell' ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8" : "max-w-4xl mx-auto space-y-4"}>
-              {filteredItems.map((item) => (
-                viewMode === 'sell' ? (
-                  <Link href={`/listings/${item.id}`} key={item.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col group">
-                    <div className="h-56 bg-gray-100 relative overflow-hidden">
-                      {item.images?.[0] ? <img src={item.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-gray-300 font-black italic">ScrapX</div>}
-                      <div className="absolute top-3 left-3"><span className="bg-black/70 backdrop-blur-md text-white px-2 py-1 text-[9px] font-black rounded uppercase">{item.condition || 'Scrap'}</span></div>
-                    </div>
-                    <div className="p-5 flex-1 flex flex-col">
-                      <h3 className="font-bold text-gray-900 text-lg truncate mb-1">{item.title}</h3>
-                      <p className="text-xs text-gray-400 font-bold mb-4">📍 {item.city}, {item.country}</p>
-                      <div className="mt-auto pt-4 border-t flex justify-between items-end">
-                        <div>
-                          <p className="text-[10px] text-gray-400 font-black uppercase tracking-tighter">Price</p>
-                          <span className="text-xl font-black text-green-600">{formatPrice(item.price)}</span>
-                        </div>
-                        <span className="text-xs font-black text-gray-900 bg-gray-50 px-2 py-1 rounded">{item.quantity} {item.unit}</span>
-                      </div>
-                    </div>
-                  </Link>
-                ) : (
-                  <div key={item.id} className="bg-white p-6 rounded-2xl border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6 hover:shadow-lg transition-all border-l-4 border-l-blue-500">
-                    <div className="flex-1">
-                      <h3 className="text-xl font-black text-gray-900 mb-1">{item.title}</h3>
-                      <p className="text-sm text-gray-400 font-bold">📍 Wanted in {item.country} • Target: <span className="text-green-600 font-bold">{formatPrice(item.target_price)}</span></p>
-                    </div>
-                    <Link href={`/messages/${item.id}`} className="w-full md:w-auto"><button className="w-full bg-blue-600 text-white px-10 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition">SEND OFFER</button></Link>
-                  </div>
-                )
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
-      {!user && (
-        <div className="py-24 bg-white border-t">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row gap-16 items-center">
-            <div className="flex-1">
-              <h2 className="text-4xl font-black text-[#0a2e1c] tracking-tighter uppercase mb-6">Top Categories</h2>
-              <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                {['PET', 'HDPE', 'PVC', 'LDPE', 'PP', 'Copper', 'Aluminium', 'Steel'].map((cat) => (
-                  <div key={cat} className="flex items-center gap-3 group cursor-pointer">
-                    <span className="text-green-500 transform group-hover:translate-x-2 transition-transform">▶</span>
-                    <span className="font-black text-xl text-gray-700 group-hover:text-green-600 transition-colors">{cat}</span>
+      <div className="max-w-7xl mx-auto px-4 py-8">
+
+        <div className="flex border-b mb-8 gap-8 overflow-x-auto whitespace-nowrap">
+          <button onClick={() => setActiveTab('listings')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'listings' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>My Listings</button>
+          <button onClick={() => setActiveTab('wanted')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'wanted' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>My Wanted Requests</button>
+          <button onClick={() => setActiveTab('saved')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'saved' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>Saved Offers</button>
+        </div>
+
+        {activeTab === 'listings' && (
+          <>
+            <div className="flex justify-end mb-6">
+              <Link href="/listings/create" className="bg-black text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-gray-800 transition shadow-lg">+ POST NEW LISTING</Link>
+            </div>
+            {myListings.length === 0 ? (
+              <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't posted any listings yet.</p></div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {myListings.map((item) => (
+                  <div key={item.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col">
+                    <div className="h-48 bg-gray-100 relative">
+                      {item.images?.[0] ? <img src={item.images[0]} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-300 font-black text-xs uppercase">No Photo</div>}
+                      <div className="absolute top-3 right-3"><span className="bg-white/90 backdrop-blur text-[10px] font-bold px-3 py-1 rounded shadow-sm text-gray-800 uppercase">{item.material_type || 'Metal'}</span></div>
+                    </div>
+                    <div className="p-5 flex-1 flex flex-col">
+                      <h3 className="font-bold text-gray-900 truncate mb-1">{item.title}</h3>
+                      <p className="text-xl font-black text-green-600 mb-4">{formatPrice(item.price)}</p>
+                      <div className="mt-auto flex gap-2 border-t pt-4">
+                        <Link href={`/listings/edit/${item.id}`} className="flex-1 bg-gray-100 text-center py-2.5 rounded-lg font-bold text-xs text-gray-700 hover:bg-gray-200 transition">Edit</Link>
+                        <button onClick={() => handleDelete(item.id, 'listings')} className="flex-1 bg-red-50 text-center py-2.5 rounded-lg font-bold text-xs text-red-600 hover:bg-red-100 transition">Delete</button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="flex-1 relative">
-              <img src="https://images.unsplash.com/photo-1503596476-1c12a8ba09a9?w=800&q=80" className="rounded-3xl shadow-2xl w-full h-auto object-cover" alt="Global Trade" />
-            </div>
-          </div>
-        </div>
-      )}
+            )}
+          </>
+        )}
 
+        {activeTab === 'wanted' && (
+          <>
+            <div className="flex justify-end mb-6">
+              <Link href="/wanted/create" className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-blue-700 transition shadow-lg">+ POST WANTED REQUEST</Link>
+            </div>
+            {myWantedPosts.length === 0 ? (
+              <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't posted any wanted requests yet.</p></div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {myWantedPosts.map((item) => (
+                  <div key={item.id} className="bg-white p-6 rounded-2xl border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6 hover:shadow-sm transition-all border-l-4 border-l-blue-500">
+                    <div className="flex-1">
+                      <div className="flex gap-2 mb-3">
+                        <span className="bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider">{item.category}</span>
+                        <span className="bg-gray-50 text-gray-500 text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider">{item.condition}</span>
+                      </div>
+                      <h3 className="text-xl font-black text-gray-900 mb-1">{item.title}</h3>
+                      <p className="text-sm text-gray-400 font-bold">📍 Wanted in {item.country} • Target: <span className="text-green-600">${formatPrice(item.target_price)}</span></p>
+                    </div>
+                    <div className="flex gap-2 w-full md:w-auto mt-4 md:mt-0">
+                      <Link href={`/wanted/edit/${item.id}`} className="flex-1 md:flex-none bg-gray-100 text-center px-8 py-3 rounded-xl font-bold text-xs text-gray-700 hover:bg-gray-200 transition">Edit</Link>
+                      <button onClick={() => handleDelete(item.id, 'wanted_posts')} className="flex-1 md:flex-none bg-red-50 text-center px-8 py-3 rounded-xl font-bold text-xs text-red-600 hover:bg-red-100 transition">Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'saved' && (
+          <>
+            {savedListings.length === 0 ? (
+              <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You haven't saved any offers yet.</p></div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                {savedListings.map((item) => (
+                  <Link href={`/listings/${item.id}`} key={item.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col group">
+                    <div className="h-56 bg-gray-100 relative overflow-hidden">
+                      {item.images?.[0] ? <img src={item.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-gray-300 font-black italic">ScrapX</div>}
+                    </div>
+                    <div className="p-5 flex-1 flex flex-col">
+                      <h3 className="font-bold text-gray-900 text-lg truncate mb-1">{item.title}</h3>
+                      <p className="text-xl font-black text-green-600 mb-4">{formatPrice(item.price)}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* FOLLOWING */}
+        {activeTab === 'following' && (
+          <>
+            {followedUsers.length === 0 ? (
+              <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">You are not following anyone yet.</p></div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {followedUsers.map((u) => (
+                  <div key={u.id} className="bg-white p-8 rounded-3xl border border-gray-200 flex flex-col items-center text-center shadow-sm hover:shadow-md transition">
+                    <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
+                      {u.full_name?.[0]?.toUpperCase() || 'M'}
+                    </div>
+                    <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Mehmet'}</h3>
+                    <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'MNT Paper and Plastics'}</p>
+
+                    <button className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-xl font-black w-full shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                      Message (Premium)
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* FOLLOWERS */}
+        {activeTab === 'followers' && (
+          <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">Users following you will appear here.</p></div>
+        )}
+      </div>
     </div>
-  );
-}
-
-export default function Home() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-black text-2xl text-green-600 animate-pulse bg-[#0a2e1c]">STARTING SCRAPX...</div>}>
-      <MarketplaceContent />
-    </Suspense>
   );
 }
