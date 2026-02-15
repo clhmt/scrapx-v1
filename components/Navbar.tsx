@@ -14,6 +14,7 @@ export default function Navbar() {
     // URL'deki mevcut arama terimini al
     const [searchValue, setSearchValue] = useState(searchParams.get("search") || "");
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Arama kutusu her değiştiğinde URL'yi güncelle
@@ -45,6 +46,35 @@ export default function Navbar() {
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        if (!user?.id) return;
+
+        const fetchUnreadCount = async () => {
+            const { count, error } = await supabase
+                .from("messages")
+                .select("id", { count: "exact", head: true })
+                .eq("receiver_id", user.id)
+                .eq("is_read", false);
+
+            if (!error) {
+                setUnreadCount(count || 0);
+            }
+        };
+
+        fetchUnreadCount();
+
+        const channel = supabase
+            .channel("navbar_unread_messages")
+            .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
+                fetchUnreadCount();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user?.id]);
 
     return (
         <nav className="bg-white border-b sticky top-0 z-50 shadow-sm h-16">
@@ -87,9 +117,19 @@ export default function Navbar() {
                     {!loading && (
                         user ? (
                             <div className="relative" ref={dropdownRef}>
-                                <button onClick={() => setDropdownOpen(!dropdownOpen)} className="w-9 h-9 bg-gray-900 text-white rounded-full flex items-center justify-center font-bold overflow-hidden border-2 border-transparent hover:border-green-500 transition-all">
-                                    {user.email?.[0].toUpperCase()}
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <Link href="/messages" className="relative text-gray-700 hover:text-green-600 transition-colors" aria-label="Unread messages">
+                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8m-2 10H5a2 2 0 01-2-2V8a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2z" /></svg>
+                                        {unreadCount > 0 && (
+                                            <span className="absolute -top-2 -right-2 min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                                                {unreadCount > 99 ? "99+" : unreadCount}
+                                            </span>
+                                        )}
+                                    </Link>
+                                    <button onClick={() => setDropdownOpen(!dropdownOpen)} className="w-9 h-9 bg-gray-900 text-white rounded-full flex items-center justify-center font-bold overflow-hidden border-2 border-transparent hover:border-green-500 transition-all">
+                                        {user.email?.[0].toUpperCase()}
+                                    </button>
+                                </div>
                                 {dropdownOpen && (
                                     <div className="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
                                         <div className="px-4 py-3 border-b bg-gray-50/50"><p className="text-sm font-bold truncate">My Account</p><p className="text-xs text-gray-500 truncate">{user.email}</p></div>

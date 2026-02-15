@@ -24,6 +24,7 @@ export default function ProfilePage() {
     const [myWantedPosts, setMyWantedPosts] = useState<any[]>([]);
     const [savedListings, setSavedListings] = useState<any[]>([]);
     const [followedUsers, setFollowedUsers] = useState<any[]>([]);
+    const [followersUsers, setFollowersUsers] = useState<any[]>([]);
 
     const [followersCount, setFollowersCount] = useState(0);
     const [followingCount, setFollowingCount] = useState(0);
@@ -85,14 +86,31 @@ export default function ProfilePage() {
                     if (usersData && usersData.length > 0) {
                         setFollowedUsers(usersData);
                     } else {
-                        // DÜZELTME: Eski orijinal "Mehmet" tasarımına geri dönüldü
-                        setFollowedUsers(ids.map(id => ({ id, full_name: "Mehmet", company_name: "MNT Paper and Plastics" })));
+                        setFollowedUsers(ids.map(id => ({ id, full_name: "Unknown User", company_name: "" })));
                     }
                 } else {
                     setFollowedUsers([]);
                 }
             } catch (error) {
                 console.error("Following error:", error);
+            }
+        }
+        else if (activeTab === 'followers') {
+            try {
+                const { data: followData } = await supabase.from("follows").select("follower_id").eq("following_id", user.id);
+                if (followData && followData.length > 0) {
+                    const ids = followData.map(f => f.follower_id);
+                    const { data: usersData } = await supabase.from("users").select("*").in("id", ids);
+                    if (usersData && usersData.length > 0) {
+                        setFollowersUsers(usersData);
+                    } else {
+                        setFollowersUsers(ids.map(id => ({ id, full_name: "Unknown User", company_name: "" })));
+                    }
+                } else {
+                    setFollowersUsers([]);
+                }
+            } catch (error) {
+                console.error("Followers error:", error);
             }
         }
         setLoading(false);
@@ -240,10 +258,7 @@ export default function ProfilePage() {
                                         <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Mehmet'}</h3>
                                         <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'MNT Paper and Plastics'}</p>
 
-                                        <button className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-xl font-black w-full shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                                            Message (Premium)
-                                        </button>
+                                        <Link href={`/messages/direct/${u.id}`} className="w-full block text-center bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700">Message</Link>
                                     </div>
                                 ))}
                             </div>
@@ -253,7 +268,24 @@ export default function ProfilePage() {
 
                 {/* FOLLOWERS */}
                 {activeTab === 'followers' && (
-                    <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">Users following you will appear here.</p></div>
+                    <>
+                        {followersUsers.length === 0 ? (
+                            <div className="bg-white p-20 rounded-3xl border border-dashed border-gray-300 text-center"><p className="text-gray-400 font-bold italic">Users following you will appear here.</p></div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                {followersUsers.map((u) => (
+                                    <div key={u.id} className="bg-white p-8 rounded-3xl border border-gray-200 flex flex-col items-center text-center shadow-sm hover:shadow-md transition">
+                                        <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
+                                            {u.full_name?.[0]?.toUpperCase() || 'U'}
+                                        </div>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'Unknown User'}</h3>
+                                        <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'ScrapX Member'}</p>
+                                        <Link href={`/messages/direct/${u.id}`} className="w-full block text-center bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700">Message</Link>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>
