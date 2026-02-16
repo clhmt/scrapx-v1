@@ -14,6 +14,7 @@ const formatPrice = (price?: number | null) => {
 
 interface MarketplaceItem {
   id: string;
+  user_id?: string | null;
   title?: string | null;
   description?: string | null;
   category?: string | null;
@@ -121,7 +122,38 @@ function MarketplaceContent() {
                 <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">How It Works</h2>
                 <div className="w-24 h-1 bg-green-500 mx-auto mt-4 rounded-full"></div>
               </div>
-              {/* ... (How it works içerikleri) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[
+                  {
+                    title: "1. Create an Account",
+                    description: "Sign up in minutes, complete your business profile, and unlock trusted global recycling partners.",
+                    icon: "👤",
+                  },
+                  {
+                    title: "2. Post Scrap or Wanted",
+                    description: "Publish your available material or share what you need with clear specs, quantity, and target pricing.",
+                    icon: "📝",
+                  },
+                  {
+                    title: "3. Connect & Message",
+                    description: "Reach suppliers and buyers instantly through direct messages to negotiate terms and delivery details.",
+                    icon: "💬",
+                  },
+                  {
+                    title: "4. Trade Safely",
+                    description: "Finalize deals confidently with transparent communication and verified business identities.",
+                    icon: "🛡️",
+                  },
+                ].map((step) => (
+                  <div key={step.title} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-lg transition-all duration-300">
+                    <div className="w-12 h-12 rounded-xl bg-green-100 text-2xl flex items-center justify-center mb-4">
+                      <span role="img" aria-label={step.title}>{step.icon}</span>
+                    </div>
+                    <h3 className="font-black text-lg text-gray-900 mb-2">{step.title}</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">{step.description}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </>
@@ -193,7 +225,15 @@ function MarketplaceContent() {
                       <h3 className="text-xl font-black text-gray-900 mb-1">{item.title}</h3>
                       <p className="text-sm text-gray-400 font-bold">📍 Wanted in {item.country} • Target: <span className="text-green-600 font-bold">{formatPrice(item.target_price)}</span></p>
                     </div>
-                    <Link href={`/messages/${item.id}`} className="w-full md:w-auto"><button className="w-full bg-blue-600 text-white px-10 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition">SEND OFFER</button></Link>
+                    {item.user_id ? (
+                      <Link href={`/messages/direct/${item.user_id}`} className="w-full md:w-auto bg-blue-600 text-white px-10 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition text-center">
+                        Send Message
+                      </Link>
+                    ) : (
+                      <button disabled className="w-full md:w-auto bg-gray-300 text-gray-500 px-10 py-3 rounded-xl font-black text-sm cursor-not-allowed">
+                        User unavailable
+                      </button>
+                    )}
                   </div>
                 )
               ))}
