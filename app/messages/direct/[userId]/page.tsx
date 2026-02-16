@@ -140,7 +140,7 @@ export default function DirectMessagePage() {
                         <h2 className="font-bold text-lg">{loading ? "Bağlanıyor..." : targetUser ? targetUser.full_name : "Kullanıcı"}</h2>
                         <p className="text-sm text-gray-500">{targetUser ? targetUser.company_name : "Direkt Mesaj"}</p>
                     </div>
-                    <button onClick={() => router.back()} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">Geri Dön</button>
+                    <button onClick={() => { window.location.href = '/messages'; }} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">Geri Dön</button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
