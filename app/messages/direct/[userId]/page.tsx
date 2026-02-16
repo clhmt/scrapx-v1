@@ -53,6 +53,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
         const initChat = async () => {
             setInitializing(true);
             setConversationId(null);
+            setMessages([]);
 
             try {
                 const { data: tUser, error: targetError } = await supabase
@@ -60,31 +61,64 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                     .from("users")
                     .select("id, full_name, company_name, email")
                     .eq("id", targetUserId)
-                    .maybeSingle();
+                    .single();
 
                 if (targetError) {
-                    console.error("Target user fetch error:", targetError);
+                    console.error("[DirectMessagePage] Failed to fetch target user", {
+                        targetUserId,
+                        error: targetError,
+                    });
+                }
+
+                if (!tUser) {
+                    console.error("[DirectMessagePage] Target user query returned empty result", {
+                        targetUserId,
+                    });
                 }
 
                 if (isMounted) {
                     setTargetUser((tUser as TargetUser) || { id: targetUserId, full_name: null, company_name: null, email: null });
                 }
 
-                const { data: existingConvo, error: convoError } = await supabase
+                const { data: directConversation, error: directConversationError } = await supabase
                     .schema("public")
                     .from("conversations")
                     .select("id")
+                    .eq("buyer_id", user.id)
+                    .eq("seller_id", targetUserId)
                     .is("listing_id", null)
-                    .or(`and(buyer_id.eq.${user.id},seller_id.eq.${targetUserId}),and(buyer_id.eq.${targetUserId},seller_id.eq.${user.id})`)
                     .order("created_at", { ascending: true })
                     .limit(1)
                     .maybeSingle();
 
-                if (convoError) {
-                    throw convoError;
+                if (directConversationError) {
+                    console.error("[DirectMessagePage] Failed to fetch direct conversation (buyer=current user)", {
+                        currentUserId: user.id,
+                        targetUserId,
+                        error: directConversationError,
+                    });
                 }
 
-                let resolvedConversationId = existingConvo?.id ?? null;
+                const { data: reverseConversation, error: reverseConversationError } = await supabase
+                    .schema("public")
+                    .from("conversations")
+                    .select("id")
+                    .eq("buyer_id", targetUserId)
+                    .eq("seller_id", user.id)
+                    .is("listing_id", null)
+                    .order("created_at", { ascending: true })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (reverseConversationError) {
+                    console.error("[DirectMessagePage] Failed to fetch direct conversation (seller=current user)", {
+                        currentUserId: user.id,
+                        targetUserId,
+                        error: reverseConversationError,
+                    });
+                }
+
+                let resolvedConversationId = directConversation?.id || reverseConversation?.id || null;
 
                 if (!resolvedConversationId) {
                     const { data: insertedConvo, error: insertError } = await supabase
@@ -95,6 +129,11 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                         .single();
 
                     if (insertError) {
+                        console.error("[DirectMessagePage] Failed to create direct conversation", {
+                            currentUserId: user.id,
+                            targetUserId,
+                            error: insertError,
+                        });
                         throw insertError;
                     }
 
@@ -110,12 +149,17 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                 }
 
                 const { data: msgs, error: messagesError } = await supabase
+                    .schema("public")
                     .from("messages")
                     .select("id, conversation_id, sender_id, content, created_at, is_read")
                     .eq("conversation_id", resolvedConversationId)
                     .order("created_at", { ascending: true });
 
                 if (messagesError) {
+                    console.error("[DirectMessagePage] Failed to fetch messages", {
+                        conversationId: resolvedConversationId,
+                        error: messagesError,
+                    });
                     throw messagesError;
                 }
 
@@ -123,14 +167,26 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                     setMessages((msgs || []) as MessageRow[]);
                 }
 
-                await supabase
+                const { error: markReadError } = await supabase
+                    .schema("public")
                     .from("messages")
                     .update({ is_read: true })
                     .eq("conversation_id", resolvedConversationId)
                     .neq("sender_id", user.id)
                     .eq("is_read", false);
+
+                if (markReadError) {
+                    console.error("[DirectMessagePage] Failed to mark initial messages as read", {
+                        conversationId: resolvedConversationId,
+                        error: markReadError,
+                    });
+                }
             } catch (error) {
-                console.error("Direct chat init error:", error);
+                console.error("[DirectMessagePage] Direct chat init error", {
+                    currentUserId: user.id,
+                    targetUserId,
+                    error,
+                });
             } finally {
                 if (isMounted) {
                     setInitializing(false);
@@ -158,7 +214,20 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                     setMessages((prev) => [...prev, message]);
 
                     if (message.sender_id !== user.id) {
-                        supabase.from("messages").update({ is_read: true }).eq("id", message.id).then();
+                        supabase
+                            .schema("public")
+                            .from("messages")
+                            .update({ is_read: true })
+                            .eq("id", message.id)
+                            .then(({ error }) => {
+                                if (error) {
+                                    console.error("[DirectMessagePage] Failed to mark realtime message as read", {
+                                        messageId: message.id,
+                                        conversationId,
+                                        error,
+                                    });
+                                }
+                            });
                     }
                 }
             )
@@ -177,16 +246,28 @@ export default function DirectMessagePage({ params }: { params: { userId: string
         e.preventDefault();
         if (!newMessage.trim() || !conversationId || !user) return;
 
-        const { error } = await supabase.from("messages").insert([
+        const { error } = await supabase
+            .schema("public")
+            .from("messages")
+            .insert([
             {
                 conversation_id: conversationId,
                 sender_id: user.id,
                 content: newMessage,
                 is_read: false,
             },
-        ]);
+            ]);
 
-        if (!error) setNewMessage("");
+        if (error) {
+            console.error("[DirectMessagePage] Failed to send message", {
+                conversationId,
+                senderId: user.id,
+                error,
+            });
+            return;
+        }
+
+        setNewMessage("");
     };
 
     if (authLoading || !user) return <div className="p-10 text-center">Yükleniyor...</div>;
