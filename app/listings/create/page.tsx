@@ -65,10 +65,10 @@ export default function CreateListing() {
         setFormData({ ...formData, country: e.target.value, city: "" });
     };
 
-    const handleImageChange = (e: any) => {
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
 
-        const selectedFiles = Array.from(e.target.files);
+        const selectedFiles = Array.from(e.target.files) as File[];
         const invalidType = selectedFiles.find((file) => !isAllowedListingImageType(file.type));
         if (invalidType) {
             alert("Only JPEG, PNG, and WEBP images are allowed.");
