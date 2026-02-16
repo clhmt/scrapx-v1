@@ -54,7 +54,14 @@ export default function MessagesInbox() {
 
         const rows = (conversationData || []) as ConversationRow[];
         const otherUserIds = Array.from(
-            new Set(rows.map((c) => (c.buyer_id === currentUserId ? c.seller_id : c.buyer_id)).filter(Boolean))
+            new Set(
+                rows
+                    .map((convo) => {
+                        const otherUserId = convo.buyer_id === currentUserId ? convo.seller_id : convo.buyer_id;
+                        return otherUserId;
+                    })
+                    .filter((id): id is string => Boolean(id) && id !== currentUserId)
+            )
         );
 
         let usersMap = new Map<string, UserRow>();
@@ -72,20 +79,27 @@ export default function MessagesInbox() {
             }
         }
 
-        const mappedConversations: ConversationItem[] = rows.map((conversation) => {
-            const otherUserId = conversation.buyer_id === currentUserId ? conversation.seller_id : conversation.buyer_id;
-            const otherUser = usersMap.get(otherUserId);
-            const fallbackFromEmail = otherUser?.email?.split("@")[0];
-            const otherUserName = otherUser?.full_name?.trim() || fallbackFromEmail || "ScrapX User";
+        const mappedConversations: ConversationItem[] = rows
+            .map((conversation) => {
+                const otherUserId = conversation.buyer_id === currentUserId ? conversation.seller_id : conversation.buyer_id;
 
-            return {
-                id: conversation.id,
-                otherUserId,
-                otherUserName,
-                updated_at: conversation.updated_at || undefined,
-                created_at: conversation.created_at,
-            };
-        });
+                if (!otherUserId || otherUserId === currentUserId) {
+                    return null;
+                }
+
+                const otherUser = usersMap.get(otherUserId);
+                const fallbackFromEmail = otherUser?.email?.split("@")[0];
+                const otherUserName = otherUser?.full_name?.trim() || fallbackFromEmail || "ScrapX User";
+
+                return {
+                    id: conversation.id,
+                    otherUserId,
+                    otherUserName,
+                    updated_at: conversation.updated_at || undefined,
+                    created_at: conversation.created_at,
+                };
+            })
+            .filter((item): item is ConversationItem => item !== null);
 
         setConversations(mappedConversations);
         setLoading(false);
