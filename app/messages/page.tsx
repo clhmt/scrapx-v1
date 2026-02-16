@@ -79,8 +79,7 @@ export default function MessagesInbox() {
             }
         }
 
-        const mappedConversations: ConversationItem[] = rows
-            .map((conversation) => {
+        const mappedConversations = rows.map((conversation) => {
                 const otherUserId = conversation.buyer_id === currentUserId ? conversation.seller_id : conversation.buyer_id;
 
                 if (!otherUserId || otherUserId === currentUserId) {
@@ -98,10 +97,11 @@ export default function MessagesInbox() {
                     updated_at: conversation.updated_at || undefined,
                     created_at: conversation.created_at,
                 };
-            })
-            .filter((item): item is ConversationItem => item !== null);
+            });
 
-        setConversations(mappedConversations);
+        const filteredConversations = mappedConversations.filter(Boolean) as ConversationItem[];
+
+        setConversations(filteredConversations);
         setLoading(false);
     };
 
