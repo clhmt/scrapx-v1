@@ -93,14 +93,23 @@ export default function DirectMessagePage() {
                     .eq("conversation_id", resolvedConversationId)
                     .order("created_at", { ascending: true });
 
-                setMessages(existingMessages ?? []);
+                const normalizedMessages = existingMessages ?? [];
+                setMessages(normalizedMessages);
 
-                await supabase
-                    .from("messages")
-                    .update({ is_read: true })
-                    .eq("conversation_id", resolvedConversationId)
-                    .neq("sender_id", user.id)
-                    .eq("is_read", false);
+                const unreadIds = normalizedMessages
+                    .filter((msg) => msg.is_read === false && msg.sender_id !== user.id)
+                    .map((msg) => msg.id);
+
+                if (unreadIds.length > 0) {
+                    const { error: markReadError } = await supabase
+                        .from("messages")
+                        .update({ is_read: true })
+                        .in("id", unreadIds);
+
+                    if (markReadError) {
+                        console.error("Update error:", markReadError);
+                    }
+                }
 
                 window.dispatchEvent(new Event("messages:read-sync"));
             } catch (error) {
@@ -230,14 +239,17 @@ export default function DirectMessagePage() {
                         <p className="text-sm text-gray-500">{targetUser?.company_name || "Direct Message"}</p>
                     </div>
                     <button
-                        onClick={async () => {
-                            if (conversationId) {
-                                await supabase
+                        onClick={async (e) => {
+                            e.preventDefault();
+                            if (conversationId && user) {
+                                const { error } = await supabase
                                     .from("messages")
                                     .update({ is_read: true })
                                     .eq("conversation_id", conversationId)
-                                    .neq("sender_id", user?.id)
+                                    .neq("sender_id", user.id)
                                     .eq("is_read", false);
+
+                                if (error) console.error("Update error:", error);
                             }
                             window.location.href = "/messages";
                         }}
