@@ -1,89 +1,139 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+
+interface MessageRow {
+    id: string;
+    conversation_id: string;
+    sender_id: string;
+    content: string;
+    created_at: string;
+    is_read: boolean;
+}
+
+interface TargetUser {
+    id: string;
+    full_name: string | null;
+    company_name: string | null;
+    email?: string | null;
+}
 
 export default function DirectMessagePage({ params }: { params: { userId: string } }) {
-    const { user } = useAuth() as any;
+    const { user, loading: authLoading } = useAuth();
     const router = useRouter();
-    const [messages, setMessages] = useState<any[]>([]);
+    const [messages, setMessages] = useState<MessageRow[]>([]);
     const [newMessage, setNewMessage] = useState("");
     const [conversationId, setConversationId] = useState<string | null>(null);
-    const [targetUser, setTargetUser] = useState<any>(null);
+    const [targetUser, setTargetUser] = useState<TargetUser | null>(null);
+    const [initializing, setInitializing] = useState(true);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (authLoading) return;
+        if (!user) {
+            router.push("/auth");
+        }
+    }, [authLoading, user, router]);
 
     useEffect(() => {
         if (!user) return;
 
         const initChat = async () => {
-            // 1. Karşıdaki kullanıcının bilgilerini çek
-            const { data: tUser } = await supabase
+            setInitializing(true);
+
+            const { data: tUser, error: targetError } = await supabase
                 .from("users")
-                .select("full_name, company_name")
+                .select("id, full_name, company_name, email")
                 .eq("id", params.userId)
-                .single();
-            if (tUser) setTargetUser(tUser);
+                .maybeSingle();
 
-            // 2. İkiniz arasında daha önce açılmış direkt mesaj (listing_id null olan) var mı kontrol et
-            const { data: existingConvos } = await supabase
-                .from("conversations")
-                .select("*")
-                .is("listing_id", null)
-                .or(`and(buyer_id.eq.${user.id},seller_id.eq.${params.userId}),and(buyer_id.eq.${params.userId},seller_id.eq.${user.id})`);
+            if (targetError) {
+                console.error("Target user fetch error:", targetError);
+            }
 
-            let currentConvoId = null;
-
-            if (existingConvos && existingConvos.length > 0) {
-                currentConvoId = existingConvos[0].id;
+            if (tUser) {
+                setTargetUser(tUser as TargetUser);
             } else {
-                // Yoksa sıfırdan yeni bir oda kur
-                const { data: newConvo } = await supabase
+                setTargetUser({ id: params.userId, full_name: null, company_name: null, email: null });
+            }
+
+            const { data: existingConvos, error: convoError } = await supabase
+                .from("conversations")
+                .select("id")
+                .is("listing_id", null)
+                .or(`and(buyer_id.eq.${user.id},seller_id.eq.${params.userId}),and(buyer_id.eq.${params.userId},seller_id.eq.${user.id})`)
+                .limit(1);
+
+            if (convoError) {
+                console.error("Conversation fetch error:", convoError);
+                setInitializing(false);
+                return;
+            }
+
+            let currentConvoId = existingConvos?.[0]?.id || null;
+
+            if (!currentConvoId) {
+                const { data: newConvo, error: newConvoError } = await supabase
                     .from("conversations")
                     .insert([{ buyer_id: user.id, seller_id: params.userId }])
-                    .select()
+                    .select("id")
                     .single();
 
-                if (newConvo) currentConvoId = newConvo.id;
+                if (newConvoError) {
+                    console.error("Conversation create error:", newConvoError);
+                    setInitializing(false);
+                    return;
+                }
+
+                currentConvoId = newConvo.id;
             }
 
-            if (currentConvoId) {
-                setConversationId(currentConvoId);
+            setConversationId(currentConvoId);
 
-                // Mesajları getir
-                const { data: msgs } = await supabase
-                    .from("messages")
-                    .select("*")
-                    .eq("conversation_id", currentConvoId)
-                    .order("created_at", { ascending: true });
+            const { data: msgs, error: messagesError } = await supabase
+                .from("messages")
+                .select("id, conversation_id, sender_id, content, created_at, is_read")
+                .eq("conversation_id", currentConvoId)
+                .order("created_at", { ascending: true });
 
-                if (msgs) setMessages(msgs);
-
-                // Odaya girince karşıdan gelen mesajları "Okundu" olarak işaretle
-                await supabase
-                    .from("messages")
-                    .update({ is_read: true })
-                    .eq("conversation_id", currentConvoId)
-                    .neq("sender_id", user.id)
-                    .eq("is_read", false);
+            if (messagesError) {
+                console.error("Messages fetch error:", messagesError);
             }
+
+            if (msgs) {
+                setMessages(msgs as MessageRow[]);
+            }
+
+            await supabase
+                .from("messages")
+                .update({ is_read: true })
+                .eq("conversation_id", currentConvoId)
+                .neq("sender_id", user.id)
+                .eq("is_read", false);
+
+            setInitializing(false);
         };
 
         initChat();
+    }, [user, params.userId]);
 
-        // Canlı Mesajlaşma (Real-time) aboneliği
+    useEffect(() => {
+        if (!conversationId || !user) return;
+
         const channel = supabase
-            .channel("dm_messages")
+            .channel(`dm_messages_${conversationId}`)
             .on(
                 "postgres_changes",
-                { event: "INSERT", schema: "public", table: "messages" },
+                { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
                 (payload) => {
-                    setMessages((prev) => [...prev, payload.new]);
-                    // Mesaj bize geldiyse anında okundu yap ki bildirim zili sönsün
-                    if (payload.new.sender_id !== user.id) {
-                        supabase.from("messages").update({ is_read: true }).eq("id", payload.new.id).then();
+                    const message = payload.new as MessageRow;
+                    setMessages((prev) => [...prev, message]);
+
+                    if (message.sender_id !== user.id) {
+                        supabase.from("messages").update({ is_read: true }).eq("id", message.id).then();
                     }
                 }
             )
@@ -92,7 +142,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user, params.userId]);
+    }, [conversationId, user]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -107,48 +157,54 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                 conversation_id: conversationId,
                 sender_id: user.id,
                 content: newMessage,
-                is_read: false
+                is_read: false,
             },
         ]);
 
         if (!error) setNewMessage("");
     };
 
-    if (!user) return <div className="p-10 text-center">Yükleniyor...</div>;
+    if (authLoading || !user) return <div className="p-10 text-center">Yükleniyor...</div>;
+
+    const headerName = targetUser?.full_name?.trim() || targetUser?.email?.split("@")[0] || "ScrapX User";
+    const headerCompany = targetUser?.company_name?.trim() || "Direkt Mesaj";
 
     return (
         <div className="max-w-4xl mx-auto p-4 md:p-8">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 h-[600px] flex flex-col">
-                {/* Sohbet Başlığı */}
                 <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
                     <div>
-                        <h2 className="font-bold text-lg">{targetUser ? targetUser.full_name : "Bağlanıyor..."}</h2>
-                        <p className="text-sm text-gray-500">{targetUser ? targetUser.company_name : "Direkt Mesaj"}</p>
+                        <h2 className="font-bold text-lg">{headerName}</h2>
+                        <p className="text-sm text-gray-500">{headerCompany}</p>
                     </div>
                     <button onClick={() => router.back()} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">
                         Geri Dön
                     </button>
                 </div>
 
-                {/* Mesaj Kutuları */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
-                    {messages.map((msg) => {
-                        const isMine = msg.sender_id === user.id;
-                        return (
-                            <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                                <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMine ? "bg-green-600 text-white rounded-tr-sm" : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm"}`}>
-                                    <p>{msg.content}</p>
-                                    <span className={`text-[10px] block mt-1 ${isMine ? "text-green-200" : "text-gray-400"}`}>
-                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
+                    {initializing ? (
+                        <div className="text-center text-gray-400 font-semibold">Bağlanıyor...</div>
+                    ) : messages.length === 0 ? (
+                        <div className="text-center text-gray-400 font-semibold">Henüz mesaj yok. İlk mesajı siz gönderin.</div>
+                    ) : (
+                        messages.map((msg) => {
+                            const isMine = msg.sender_id === user.id;
+                            return (
+                                <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                                    <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMine ? "bg-green-600 text-white rounded-tr-sm" : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm"}`}>
+                                        <p>{msg.content}</p>
+                                        <span className={`text-[10px] block mt-1 ${isMine ? "text-green-200" : "text-gray-400"}`}>
+                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Mesaj Gönderme Çubuğu */}
                 <div className="p-4 bg-white border-t border-gray-200 rounded-b-xl">
                     <form onSubmit={sendMessage} className="flex gap-2">
                         <input

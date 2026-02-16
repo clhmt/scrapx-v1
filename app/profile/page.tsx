@@ -32,6 +32,12 @@ interface SocialUser {
     email?: string;
 }
 
+interface CurrentUserProfile {
+    full_name?: string | null;
+    company_name?: string | null;
+    email?: string | null;
+}
+
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
     return new Intl.NumberFormat('en-US').format(price) + " USD";
@@ -55,17 +61,39 @@ export default function ProfilePage() {
     const [followingCount, setFollowingCount] = useState(0);
 
     const [loading, setLoading] = useState(true);
+    const [currentUserProfile, setCurrentUserProfile] = useState<CurrentUserProfile | null>(null);
 
-    const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "User";
+    const userName = currentUserProfile?.full_name?.trim() || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "User";
+    const userCompany = currentUserProfile?.company_name?.trim() || "Verified Member";
 
     useEffect(() => {
         if (!authLoading && !user) {
             router.push("/auth");
         } else if (user) {
+            fetchCurrentUserProfile();
             fetchData();
             fetchFollowData();
         }
     }, [user, authLoading, activeTab]);
+
+    const fetchCurrentUserProfile = async () => {
+        if (!user?.id) return;
+
+        const { data, error } = await supabase
+            .from("users")
+            .select("full_name, company_name, email")
+            .eq("id", user.id)
+            .maybeSingle();
+
+        if (error) {
+            console.error("Current user profile fetch error:", error);
+            return;
+        }
+
+        if (data) {
+            setCurrentUserProfile(data);
+        }
+    };
 
     const fetchFollowData = async () => {
         if (!user?.id) return;
@@ -205,7 +233,7 @@ export default function ProfilePage() {
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{userName}</h1>
                         <div className="flex items-center gap-2 mt-1 mb-2">
-                            <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Verified Member</span>
+                            <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">{userCompany}</span>
                             <span className="text-gray-400 text-sm">• {user?.email}</span>
                         </div>
                         <div className="flex gap-4 text-sm font-bold text-gray-700">
