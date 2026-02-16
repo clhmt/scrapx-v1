@@ -34,3 +34,28 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Storage cleanup + RLS troubleshooting
+
+### Apply migrations
+Run the new phase-1 migration in your Supabase project:
+
+```bash
+supabase db push
+```
+
+Or run the SQL directly from `supabase/migrations/202602160001_phase1_security_and_storage.sql` in Supabase SQL Editor.
+
+### Required environment variables
+Make sure these are set locally and in deployment:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (required by `POST /api/listings/delete` for storage cleanup + secure owner-checked delete)
+
+### Troubleshooting checklist
+- If listing delete fails with `401`, confirm the user session token is present in client auth.
+- If listing delete fails with `403`, verify listing `user_id` matches the authenticated user.
+- If uploads fail, verify file type is one of `image/jpeg`, `image/png`, `image/webp` and each file is <= 5MB.
+- If storage delete fails, verify the `listings` bucket exists and policies were applied from the migration.
+- Listing image reads are intentionally public for marketplace browsing.

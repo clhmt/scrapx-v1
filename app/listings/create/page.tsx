@@ -4,6 +4,12 @@ import { useState } from "react";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import {
+    buildListingImageStoragePath,
+    isAllowedListingImageType,
+    LISTINGS_BUCKET,
+    MAX_LISTING_IMAGE_SIZE_BYTES
+} from "@/lib/listingImageUtils";
 
 export default function CreateListing() {
     const router = useRouter();
@@ -59,7 +65,24 @@ export default function CreateListing() {
         setFormData({ ...formData, country: e.target.value, city: "" });
     };
 
-    const handleImageChange = (e: any) => { if (e.target.files) setImages(Array.from(e.target.files)); };
+    const handleImageChange = (e: any) => {
+        if (!e.target.files) return;
+
+        const selectedFiles = Array.from(e.target.files);
+        const invalidType = selectedFiles.find((file) => !isAllowedListingImageType(file.type));
+        if (invalidType) {
+            alert("Only JPEG, PNG, and WEBP images are allowed.");
+            return;
+        }
+
+        const oversizeFile = selectedFiles.find((file) => file.size > MAX_LISTING_IMAGE_SIZE_BYTES);
+        if (oversizeFile) {
+            alert("Each image must be 5MB or smaller.");
+            return;
+        }
+
+        setImages(selectedFiles);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -69,17 +92,40 @@ export default function CreateListing() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { router.push("/auth"); return; }
 
-        const uploadedUrls = [];
+        const listingId = crypto.randomUUID();
+        const uploadedUrls: string[] = [];
+
         for (const file of images) {
-            const fileName = `${user.id}/${Date.now()}-${file.name}`;
-            const { error } = await supabase.storage.from("listings").upload(fileName, file);
-            if (!error) {
-                const { data } = supabase.storage.from("listings").getPublicUrl(fileName);
-                uploadedUrls.push(data.publicUrl);
+            if (!isAllowedListingImageType(file.type)) {
+                alert("Only JPEG, PNG, and WEBP images are allowed.");
+                setLoading(false);
+                setUploading(false);
+                return;
             }
+
+            if (file.size > MAX_LISTING_IMAGE_SIZE_BYTES) {
+                alert("Each image must be 5MB or smaller.");
+                setLoading(false);
+                setUploading(false);
+                return;
+            }
+
+            const filePath = buildListingImageStoragePath(user.id, listingId, file.type);
+            const { error: uploadError } = await supabase.storage.from(LISTINGS_BUCKET).upload(filePath, file);
+
+            if (uploadError) {
+                alert("Image upload failed: " + uploadError.message);
+                setLoading(false);
+                setUploading(false);
+                return;
+            }
+
+            const { data } = supabase.storage.from(LISTINGS_BUCKET).getPublicUrl(filePath);
+            uploadedUrls.push(data.publicUrl);
         }
 
         const { error } = await supabase.from("listings").insert({
+            id: listingId,
             user_id: user.id,
             ...formData,
             quantity: parseFloat(formData.quantity) || 0,
@@ -239,7 +285,7 @@ export default function CreateListing() {
                                 <p className="text-sm text-gray-500 mb-4">Drag & drop or click to upload</p>
                                 <label className="cursor-pointer bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-gray-100">
                                     + Add Photos
-                                    <input type="file" multiple onChange={handleImageChange} className="hidden" />
+                                    <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} className="hidden" />
                                 </label>
                                 {images.length > 0 && <p className="mt-4 text-green-600 font-bold">{images.length} photos selected</p>}
                             </div>

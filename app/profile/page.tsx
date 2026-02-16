@@ -213,10 +213,38 @@ export default function ProfilePage() {
 
     const handleDelete = async (id: string, table: string) => {
         const itemType = table === 'listings' ? 'listing' : 'wanted request';
-        if (confirm(`Are you sure you want to delete this ${itemType}?`)) {
-            await supabase.from(table).delete().eq("id", id);
-            fetchData();
+        if (!confirm(`Are you sure you want to delete this ${itemType}?`)) {
+            return;
         }
+
+        if (table === "listings") {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) {
+                alert("You must be logged in to delete listings.");
+                return;
+            }
+
+            const response = await fetch("/api/listings/delete", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({ listingId: id }),
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null);
+                alert(payload?.error ? `Delete failed: ${payload.error}` : "Delete failed. Please try again.");
+                return;
+            }
+
+            fetchData();
+            return;
+        }
+
+        await supabase.from(table).delete().eq("id", id);
+        fetchData();
     };
 
     if (authLoading || loading) return <div className="p-20 text-center font-black">LOADING PROFILE...</div>;
