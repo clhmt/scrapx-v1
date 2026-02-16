@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider"; // YENİ: Kullanıcı giriş kontrolü için eklendi
 
-const formatPrice = (price: number) => {
+const formatPrice = (price?: number | null) => {
   if (!price) return "0 USD";
   return new Intl.NumberFormat('en-US').format(price) + " USD";
 };
