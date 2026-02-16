@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
@@ -32,7 +31,6 @@ function formatMessageTime(isoDate: string) {
 
 export default function MessagesInboxPage() {
     const { user } = useAuth();
-    const router = useRouter();
     const [conversations, setConversations] = useState<InboxConversation[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -133,7 +131,9 @@ export default function MessagesInboxPage() {
             <div className="flex items-center gap-3 mb-6">
                 <button
                     type="button"
-                    onClick={() => router.back()}
+                    onClick={() => {
+                        window.location.href = "/";
+                    }}
                     className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
                 >
                     Back

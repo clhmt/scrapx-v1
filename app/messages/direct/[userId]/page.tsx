@@ -230,8 +230,16 @@ export default function DirectMessagePage() {
                         <p className="text-sm text-gray-500">{targetUser?.company_name || "Direct Message"}</p>
                     </div>
                     <button
-                        onClick={() => {
-                            window.location.href = '/messages';
+                        onClick={async () => {
+                            if (conversationId) {
+                                await supabase
+                                    .from("messages")
+                                    .update({ is_read: true })
+                                    .eq("conversation_id", conversationId)
+                                    .neq("sender_id", user?.id)
+                                    .eq("is_read", false);
+                            }
+                            window.location.href = "/messages";
                         }}
                         className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
                     >
