@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { MouseEvent } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -33,6 +34,39 @@ export default function MessagesInboxPage() {
     const { user } = useAuth();
     const [conversations, setConversations] = useState<InboxConversation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deletingConversationIds, setDeletingConversationIds] = useState<Set<string>>(new Set());
+
+    const handleDeleteConversation = useCallback(async (event: MouseEvent<HTMLButtonElement>, conversationId: string) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!window.confirm("Are you sure you want to delete this conversation?")) {
+            return;
+        }
+
+        setDeletingConversationIds((previous) => {
+            const next = new Set(previous);
+            next.add(conversationId);
+            return next;
+        });
+
+        try {
+            const { error } = await supabase.from("conversations").delete().eq("id", conversationId);
+
+            if (error) {
+                console.error("Failed to delete conversation:", error);
+                return;
+            }
+
+            setConversations((previous) => previous.filter((conversation) => conversation.id !== conversationId));
+        } finally {
+            setDeletingConversationIds((previous) => {
+                const next = new Set(previous);
+                next.delete(conversationId);
+                return next;
+            });
+        }
+    }, []);
 
     const fetchInbox = useCallback(async () => {
         if (!user?.id) {
@@ -153,6 +187,7 @@ export default function MessagesInboxPage() {
                             if (!message) return null;
 
                             const isUnread = message.is_read === false && message.sender_id !== user.id;
+                            const isDeletingConversation = deletingConversationIds.has(conversation.id);
 
                             return (
                                 <Link
@@ -175,6 +210,17 @@ export default function MessagesInboxPage() {
                                                 {formatMessageTime(message.created_at)}
                                             </span>
                                             {isUnread && <span className="w-3 h-3 bg-green-500 rounded-full shadow-sm" aria-label="Unread" />}
+                                            <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                    void handleDeleteConversation(event, conversation.id);
+                                                }}
+                                                disabled={isDeletingConversation}
+                                                className="text-xs text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                aria-label="Delete conversation"
+                                            >
+                                                {isDeletingConversation ? "Deleting..." : "Delete"}
+                                            </button>
                                         </div>
                                     </div>
                                 </Link>
