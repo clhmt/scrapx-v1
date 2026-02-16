@@ -7,6 +7,20 @@ import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+interface ConversationRow {
+    id: string;
+    buyer_id: string;
+    seller_id: string;
+    created_at: string;
+    updated_at: string | null;
+}
+
+interface UserRow {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+}
+
 interface ConversationItem {
     id: string;
     otherUserId: string;
@@ -38,31 +52,37 @@ export default function MessagesInbox() {
             return;
         }
 
+        const rows = (conversationData || []) as ConversationRow[];
         const otherUserIds = Array.from(
-            new Set((conversationData || []).map((c) => (c.buyer_id === currentUserId ? c.seller_id : c.buyer_id)))
+            new Set(rows.map((c) => (c.buyer_id === currentUserId ? c.seller_id : c.buyer_id)).filter(Boolean))
         );
 
-        const { data: usersData, error: usersError } = await supabase
-            .from("users")
-            .select("id, full_name, email")
-            .in("id", otherUserIds);
+        let usersMap = new Map<string, UserRow>();
 
-        if (usersError) {
-            console.error("Users fetch error:", usersError);
+        if (otherUserIds.length > 0) {
+            const { data: usersData, error: usersError } = await supabase
+                .from("users")
+                .select("id, full_name, email")
+                .in("id", otherUserIds);
+
+            if (usersError) {
+                console.error("Users fetch error:", usersError);
+            } else {
+                usersMap = new Map(((usersData || []) as UserRow[]).map((u) => [u.id, u]));
+            }
         }
 
-        const usersMap = new Map((usersData || []).map((u) => [u.id, u]));
-
-        const mappedConversations: ConversationItem[] = (conversationData || []).map((conversation) => {
+        const mappedConversations: ConversationItem[] = rows.map((conversation) => {
             const otherUserId = conversation.buyer_id === currentUserId ? conversation.seller_id : conversation.buyer_id;
             const otherUser = usersMap.get(otherUserId);
-            const otherUserName = otherUser?.full_name?.trim() || otherUser?.email?.split("@")[0] || "ScrapX User";
+            const fallbackFromEmail = otherUser?.email?.split("@")[0];
+            const otherUserName = otherUser?.full_name?.trim() || fallbackFromEmail || "ScrapX User";
 
             return {
                 id: conversation.id,
                 otherUserId,
                 otherUserName,
-                updated_at: conversation.updated_at,
+                updated_at: conversation.updated_at || undefined,
                 created_at: conversation.created_at,
             };
         });
@@ -79,7 +99,7 @@ export default function MessagesInbox() {
                 fetchConversations(user.id);
             });
         }
-    }, [user, authLoading]);
+    }, [user, authLoading, router]);
 
     if (authLoading || loading) return <div className="p-20 text-center font-bold">Loading Messages...</div>;
 
