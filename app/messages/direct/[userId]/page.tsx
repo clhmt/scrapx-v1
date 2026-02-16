@@ -1,233 +1,107 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
 
-interface MessageRow {
-    id: string;
-    conversation_id: string;
-    sender_id: string;
-    content: string;
-    created_at: string;
-    is_read: boolean;
-}
-
-interface TargetUser {
-    id: string;
-    full_name: string | null;
-    company_name: string | null;
-    email?: string | null;
-}
-
 export default function DirectMessagePage({ params }: { params: { userId: string } }) {
-    const { user, loading: authLoading } = useAuth();
+    const { user } = useAuth() as any;
     const router = useRouter();
-    const [messages, setMessages] = useState<MessageRow[]>([]);
+    const [messages, setMessages] = useState<any[]>([]);
     const [newMessage, setNewMessage] = useState("");
     const [conversationId, setConversationId] = useState<string | null>(null);
-    const [targetUser, setTargetUser] = useState<TargetUser | null>(null);
-    const [initializing, setInitializing] = useState(true);
+    const [targetUser, setTargetUser] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [errorMsg, setErrorMsg] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (authLoading) return;
-        if (!user) {
-            router.push("/auth");
-        }
-    }, [authLoading, user, router]);
 
     useEffect(() => {
         if (!user) return;
 
         const targetUserId = params.userId;
+
+        // Eğer Codex'in eski hatalı sayfalarından gelen bozuk bir link (null) varsa sistemi dondurma, uyar:
         if (!targetUserId || targetUserId === "null") {
-            console.error("Invalid direct message target user id:", targetUserId);
-            setInitializing(false);
+            setErrorMsg("Hatalı bağlantı: Kullanıcı bulunamadı. Lütfen ilanlar veya gelen kutusu üzerinden tekrar deneyin.");
+            setLoading(false);
             return;
         }
 
-        let isMounted = true;
-
         const initChat = async () => {
-            setInitializing(true);
-            setConversationId(null);
-            setMessages([]);
-
             try {
-                const { data: tUser, error: targetError } = await supabase
-                    .schema("public")
+                // 1. Karşıdaki kişiyi bul (İsim ve Şirket)
+                const { data: tUser } = await supabase
                     .from("users")
-                    .select("id, full_name, company_name, email")
+                    .select("full_name, company_name")
                     .eq("id", targetUserId)
                     .single();
 
-                if (targetError) {
-                    console.error("[DirectMessagePage] Failed to fetch target user", {
-                        targetUserId,
-                        error: targetError,
-                    });
-                }
+                if (tUser) setTargetUser(tUser);
 
-                if (!tUser) {
-                    console.error("[DirectMessagePage] Target user query returned empty result", {
-                        targetUserId,
-                    });
-                }
-
-                if (isMounted) {
-                    setTargetUser((tUser as TargetUser) || { id: targetUserId, full_name: null, company_name: null, email: null });
-                }
-
-                const { data: directConversation, error: directConversationError } = await supabase
-                    .schema("public")
+                // 2. İkiniz arasında sohbet var mı kontrol et
+                const { data: existingConvos } = await supabase
                     .from("conversations")
-                    .select("id")
-                    .eq("buyer_id", user.id)
-                    .eq("seller_id", targetUserId)
+                    .select("*")
                     .is("listing_id", null)
-                    .order("created_at", { ascending: true })
-                    .limit(1)
-                    .maybeSingle();
+                    .or(`and(buyer_id.eq.${user.id},seller_id.eq.${targetUserId}),and(buyer_id.eq.${targetUserId},seller_id.eq.${user.id})`);
 
-                if (directConversationError) {
-                    console.error("[DirectMessagePage] Failed to fetch direct conversation (buyer=current user)", {
-                        currentUserId: user.id,
-                        targetUserId,
-                        error: directConversationError,
-                    });
-                }
+                let currentConvoId = null;
 
-                const { data: reverseConversation, error: reverseConversationError } = await supabase
-                    .schema("public")
-                    .from("conversations")
-                    .select("id")
-                    .eq("buyer_id", targetUserId)
-                    .eq("seller_id", user.id)
-                    .is("listing_id", null)
-                    .order("created_at", { ascending: true })
-                    .limit(1)
-                    .maybeSingle();
-
-                if (reverseConversationError) {
-                    console.error("[DirectMessagePage] Failed to fetch direct conversation (seller=current user)", {
-                        currentUserId: user.id,
-                        targetUserId,
-                        error: reverseConversationError,
-                    });
-                }
-
-                let resolvedConversationId = directConversation?.id || reverseConversation?.id || null;
-
-                if (!resolvedConversationId) {
-                    const { data: insertedConvo, error: insertError } = await supabase
-                        .schema("public")
+                if (existingConvos && existingConvos.length > 0) {
+                    currentConvoId = existingConvos[0].id;
+                } else {
+                    // 3. Yoksa yeni oda kur (Codex'in kilitlendiği aşama buydu)
+                    const { data: newConvo, error: insertError } = await supabase
                         .from("conversations")
-                        .insert([{ buyer_id: user.id, seller_id: targetUserId, listing_id: null }])
-                        .select("id")
+                        .insert([{ buyer_id: user.id, seller_id: targetUserId }])
+                        .select()
                         .single();
 
-                    if (insertError) {
-                        console.error("[DirectMessagePage] Failed to create direct conversation", {
-                            currentUserId: user.id,
-                            targetUserId,
-                            error: insertError,
-                        });
-                        throw insertError;
-                    }
-
-                    resolvedConversationId = insertedConvo.id;
+                    if (newConvo) currentConvoId = newConvo.id;
+                    if (insertError) console.error("Oda kurulamadı:", insertError);
                 }
 
-                if (!resolvedConversationId) {
-                    throw new Error("Conversation ID could not be resolved.");
+                if (currentConvoId) {
+                    setConversationId(currentConvoId);
+
+                    // 4. Geçmiş Mesajları getir
+                    const { data: msgs } = await supabase
+                        .from("messages")
+                        .select("*")
+                        .eq("conversation_id", currentConvoId)
+                        .order("created_at", { ascending: true });
+
+                    if (msgs) setMessages(msgs);
+
+                    // 5. Odaya girince mesajları "Okundu" olarak işaretle
+                    await supabase
+                        .from("messages")
+                        .update({ is_read: true })
+                        .eq("conversation_id", currentConvoId)
+                        .neq("sender_id", user.id)
+                        .eq("is_read", false);
                 }
-
-                if (isMounted) {
-                    setConversationId(resolvedConversationId);
-                }
-
-                const { data: msgs, error: messagesError } = await supabase
-                    .schema("public")
-                    .from("messages")
-                    .select("id, conversation_id, sender_id, content, created_at, is_read")
-                    .eq("conversation_id", resolvedConversationId)
-                    .order("created_at", { ascending: true });
-
-                if (messagesError) {
-                    console.error("[DirectMessagePage] Failed to fetch messages", {
-                        conversationId: resolvedConversationId,
-                        error: messagesError,
-                    });
-                    throw messagesError;
-                }
-
-                if (isMounted) {
-                    setMessages((msgs || []) as MessageRow[]);
-                }
-
-                const { error: markReadError } = await supabase
-                    .schema("public")
-                    .from("messages")
-                    .update({ is_read: true })
-                    .eq("conversation_id", resolvedConversationId)
-                    .neq("sender_id", user.id)
-                    .eq("is_read", false);
-
-                if (markReadError) {
-                    console.error("[DirectMessagePage] Failed to mark initial messages as read", {
-                        conversationId: resolvedConversationId,
-                        error: markReadError,
-                    });
-                }
-            } catch (error) {
-                console.error("[DirectMessagePage] Direct chat init error", {
-                    currentUserId: user.id,
-                    targetUserId,
-                    error,
-                });
+            } catch (err) {
+                console.error("Chat başlatma hatası:", err);
+                setErrorMsg("Sohbet odası yüklenirken bir hata oluştu.");
             } finally {
-                if (isMounted) {
-                    setInitializing(false);
-                }
+                setLoading(false);
             }
         };
 
         initChat();
 
-        return () => {
-            isMounted = false;
-        };
-    }, [user, params.userId]);
-
-    useEffect(() => {
-        if (!conversationId || !user) return;
-
+        // Canlı Mesajlaşma (Real-time) aboneliği
         const channel = supabase
-            .channel(`dm_messages_${conversationId}`)
+            .channel("dm_messages")
             .on(
                 "postgres_changes",
-                { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+                { event: "INSERT", schema: "public", table: "messages" },
                 (payload) => {
-                    const message = payload.new as MessageRow;
-                    setMessages((prev) => [...prev, message]);
-
-                    if (message.sender_id !== user.id) {
-                        supabase
-                            .schema("public")
-                            .from("messages")
-                            .update({ is_read: true })
-                            .eq("id", message.id)
-                            .then(({ error }) => {
-                                if (error) {
-                                    console.error("[DirectMessagePage] Failed to mark realtime message as read", {
-                                        messageId: message.id,
-                                        conversationId,
-                                        error,
-                                    });
-                                }
-                            });
+                    setMessages((prev) => [...prev, payload.new]);
+                    if (payload.new.sender_id !== user.id) {
+                        supabase.from("messages").update({ is_read: true }).eq("id", payload.new.id).then();
                     }
                 }
             )
@@ -236,7 +110,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [conversationId, user]);
+    }, [user, params.userId]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -246,71 +120,68 @@ export default function DirectMessagePage({ params }: { params: { userId: string
         e.preventDefault();
         if (!newMessage.trim() || !conversationId || !user) return;
 
-        const { error } = await supabase
-            .schema("public")
-            .from("messages")
-            .insert([
+        const { error } = await supabase.from("messages").insert([
             {
                 conversation_id: conversationId,
                 sender_id: user.id,
                 content: newMessage,
-                is_read: false,
+                is_read: false
             },
-            ]);
+        ]);
 
-        if (error) {
-            console.error("[DirectMessagePage] Failed to send message", {
-                conversationId,
-                senderId: user.id,
-                error,
-            });
-            return;
-        }
-
-        setNewMessage("");
+        if (!error) setNewMessage("");
     };
 
-    if (authLoading || !user) return <div className="p-10 text-center">Yükleniyor...</div>;
+    if (!user) return <div className="p-10 text-center">Yükleniyor...</div>;
 
-    const headerName = targetUser?.full_name?.trim() || targetUser?.email?.split("@")[0] || "ScrapX User";
-    const headerCompany = targetUser?.company_name?.trim() || "Direkt Mesaj";
+    // Hata ekranı (Boş ekranda donmasını engeller)
+    if (errorMsg) return (
+        <div className="p-10 text-center flex flex-col items-center">
+            <p className="text-red-500 font-bold mb-4">{errorMsg}</p>
+            <button onClick={() => router.push('/messages')} className="px-4 py-2 bg-green-600 text-white rounded-lg">Mesajlara Dön</button>
+        </div>
+    );
 
     return (
         <div className="max-w-4xl mx-auto p-4 md:p-8">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 h-[600px] flex flex-col">
+                {/* Sohbet Başlığı */}
                 <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
                     <div>
-                        <h2 className="font-bold text-lg">{headerName}</h2>
-                        <p className="text-sm text-gray-500">{headerCompany}</p>
+                        <h2 className="font-bold text-lg">
+                            {loading ? "Bağlanıyor..." : targetUser ? targetUser.full_name : "Kullanıcı Bulunamadı"}
+                        </h2>
+                        <p className="text-sm text-gray-500">
+                            {targetUser ? targetUser.company_name : "Direkt Mesaj"}
+                        </p>
                     </div>
                     <button onClick={() => router.back()} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">
                         Geri Dön
                     </button>
                 </div>
 
+                {/* Mesaj Kutuları */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
-                    {initializing ? (
-                        <div className="text-center text-gray-400 font-semibold">Bağlanıyor...</div>
-                    ) : messages.length === 0 ? (
-                        <div className="text-center text-gray-400 font-semibold">Henüz mesaj yok. İlk mesajı siz gönderin.</div>
-                    ) : (
-                        messages.map((msg) => {
-                            const isMine = msg.sender_id === user.id;
-                            return (
-                                <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                                    <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMine ? "bg-green-600 text-white rounded-tr-sm" : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm"}`}>
-                                        <p>{msg.content}</p>
-                                        <span className={`text-[10px] block mt-1 ${isMine ? "text-green-200" : "text-gray-400"}`}>
-                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                                        </span>
-                                    </div>
-                                </div>
-                            );
-                        })
+                    {messages.length === 0 && !loading && (
+                        <div className="text-center text-gray-500 mt-10">Henüz mesaj yok. İlk mesajı siz gönderin.</div>
                     )}
+                    {messages.map((msg) => {
+                        const isMine = msg.sender_id === user.id;
+                        return (
+                            <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                                <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMine ? "bg-green-600 text-white rounded-tr-sm" : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm"}`}>
+                                    <p>{msg.content}</p>
+                                    <span className={`text-[10px] block mt-1 ${isMine ? "text-green-200" : "text-gray-400"}`}>
+                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
                     <div ref={messagesEndRef} />
                 </div>
 
+                {/* Mesaj Gönderme Çubuğu */}
                 <div className="p-4 bg-white border-t border-gray-200 rounded-b-xl">
                     <form onSubmit={sendMessage} className="flex gap-2">
                         <input
@@ -318,11 +189,12 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
                             placeholder="Bir mesaj yazın..."
-                            className="flex-1 border-2 border-gray-200 rounded-full px-6 py-3 focus:outline-none focus:border-green-600 transition-colors"
+                            disabled={loading || !conversationId}
+                            className="flex-1 border-2 border-gray-200 rounded-full px-6 py-3 focus:outline-none focus:border-green-600 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed"
                         />
                         <button
                             type="submit"
-                            disabled={!newMessage.trim() || !conversationId}
+                            disabled={!newMessage.trim() || !conversationId || loading}
                             className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center text-white disabled:opacity-50 hover:bg-green-700 transition-colors"
                         >
                             <svg className="w-5 h-5 ml-1 transform rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
