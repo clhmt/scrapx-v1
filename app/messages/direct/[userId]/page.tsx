@@ -3,11 +3,14 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 
-export default function DirectMessagePage({ params }: { params: { userId: string } }) {
+export default function DirectMessagePage() {
     const { user } = useAuth() as any;
     const router = useRouter();
+    const params = useParams(); // Next.js'in yeni URL okuyucusu
+    const targetUserId = params?.userId as string;
+
     const [messages, setMessages] = useState<any[]>([]);
     const [newMessage, setNewMessage] = useState("");
     const [conversationId, setConversationId] = useState<string | null>(null);
@@ -17,12 +20,11 @@ export default function DirectMessagePage({ params }: { params: { userId: string
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!user) return;
+        // 1. Kullanıcı veya URL parametresi henüz yüklenmediyse panik yapma, bekle!
+        if (!user || !targetUserId) return;
 
-        const targetUserId = params.userId;
-
-        // Eğer Codex'in eski hatalı sayfalarından gelen bozuk bir link (null) varsa sistemi dondurma, uyar:
-        if (!targetUserId || targetUserId === "null") {
+        // 2. Eğer gerçekten hatalı/boş bir linke tıklandıysa sistemi durdur
+        if (targetUserId === "null") {
             setErrorMsg("Hatalı bağlantı: Kullanıcı bulunamadı. Lütfen ilanlar veya gelen kutusu üzerinden tekrar deneyin.");
             setLoading(false);
             return;
@@ -30,7 +32,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
 
         const initChat = async () => {
             try {
-                // 1. Karşıdaki kişiyi bul (İsim ve Şirket)
+                // Karşıdaki kişiyi bul
                 const { data: tUser } = await supabase
                     .from("users")
                     .select("full_name, company_name")
@@ -39,7 +41,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
 
                 if (tUser) setTargetUser(tUser);
 
-                // 2. İkiniz arasında sohbet var mı kontrol et
+                // İkiniz arasında sohbet var mı kontrol et
                 const { data: existingConvos } = await supabase
                     .from("conversations")
                     .select("*")
@@ -51,7 +53,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                 if (existingConvos && existingConvos.length > 0) {
                     currentConvoId = existingConvos[0].id;
                 } else {
-                    // 3. Yoksa yeni oda kur (Codex'in kilitlendiği aşama buydu)
+                    // Yoksa sıfırdan yeni oda kur
                     const { data: newConvo, error: insertError } = await supabase
                         .from("conversations")
                         .insert([{ buyer_id: user.id, seller_id: targetUserId }])
@@ -65,7 +67,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                 if (currentConvoId) {
                     setConversationId(currentConvoId);
 
-                    // 4. Geçmiş Mesajları getir
+                    // Geçmiş Mesajları getir
                     const { data: msgs } = await supabase
                         .from("messages")
                         .select("*")
@@ -74,7 +76,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
 
                     if (msgs) setMessages(msgs);
 
-                    // 5. Odaya girince mesajları "Okundu" olarak işaretle
+                    // Odaya girince mesajları "Okundu" olarak işaretle
                     await supabase
                         .from("messages")
                         .update({ is_read: true })
@@ -94,7 +96,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
 
         // Canlı Mesajlaşma (Real-time) aboneliği
         const channel = supabase
-            .channel("dm_messages")
+            .channel(`dm_room_${targetUserId}`)
             .on(
                 "postgres_changes",
                 { event: "INSERT", schema: "public", table: "messages" },
@@ -110,7 +112,7 @@ export default function DirectMessagePage({ params }: { params: { userId: string
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user, params.userId]);
+    }, [user, targetUserId]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -134,7 +136,6 @@ export default function DirectMessagePage({ params }: { params: { userId: string
 
     if (!user) return <div className="p-10 text-center">Yükleniyor...</div>;
 
-    // Hata ekranı (Boş ekranda donmasını engeller)
     if (errorMsg) return (
         <div className="p-10 text-center flex flex-col items-center">
             <p className="text-red-500 font-bold mb-4">{errorMsg}</p>
