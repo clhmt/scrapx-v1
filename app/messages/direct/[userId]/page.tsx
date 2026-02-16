@@ -41,6 +41,13 @@ export default function DirectMessagePage({ params }: { params: { userId: string
     useEffect(() => {
         if (!user) return;
 
+        const targetUserId = params.userId;
+        if (!targetUserId || targetUserId === "null") {
+            console.error("Invalid direct message target user id:", targetUserId);
+            setInitializing(false);
+            return;
+        }
+
         let isMounted = true;
 
         const initChat = async () => {
@@ -49,9 +56,10 @@ export default function DirectMessagePage({ params }: { params: { userId: string
 
             try {
                 const { data: tUser, error: targetError } = await supabase
+                    .schema("public")
                     .from("users")
                     .select("id, full_name, company_name, email")
-                    .eq("id", params.userId)
+                    .eq("id", targetUserId)
                     .maybeSingle();
 
                 if (targetError) {
@@ -59,14 +67,15 @@ export default function DirectMessagePage({ params }: { params: { userId: string
                 }
 
                 if (isMounted) {
-                    setTargetUser((tUser as TargetUser) || { id: params.userId, full_name: null, company_name: null, email: null });
+                    setTargetUser((tUser as TargetUser) || { id: targetUserId, full_name: null, company_name: null, email: null });
                 }
 
                 const { data: existingConvo, error: convoError } = await supabase
+                    .schema("public")
                     .from("conversations")
                     .select("id")
                     .is("listing_id", null)
-                    .or(`and(buyer_id.eq.${user.id},seller_id.eq.${params.userId}),and(buyer_id.eq.${params.userId},seller_id.eq.${user.id})`)
+                    .or(`and(buyer_id.eq.${user.id},seller_id.eq.${targetUserId}),and(buyer_id.eq.${targetUserId},seller_id.eq.${user.id})`)
                     .order("created_at", { ascending: true })
                     .limit(1)
                     .maybeSingle();
@@ -79,8 +88,9 @@ export default function DirectMessagePage({ params }: { params: { userId: string
 
                 if (!resolvedConversationId) {
                     const { data: insertedConvo, error: insertError } = await supabase
+                        .schema("public")
                         .from("conversations")
-                        .insert([{ buyer_id: user.id, seller_id: params.userId, listing_id: null }])
+                        .insert([{ buyer_id: user.id, seller_id: targetUserId, listing_id: null }])
                         .select("id")
                         .single();
 
