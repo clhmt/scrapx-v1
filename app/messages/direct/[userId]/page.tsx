@@ -19,7 +19,7 @@ export default function DirectMessagePage() {
     const [errorMsg, setErrorMsg] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // 1. Odayı Kurma ve Geçmişi Çekme
+    // 1. Odayı Kur ve Geçmişi Çek
     useEffect(() => {
         if (!user || !targetUserId) return;
         if (targetUserId === "null") {
@@ -30,19 +30,14 @@ export default function DirectMessagePage() {
 
         const initChat = async () => {
             try {
-                // Karşıdaki kişiyi bul
                 const { data: tUser } = await supabase.from("users").select("full_name, company_name").eq("id", targetUserId).single();
                 if (tUser) setTargetUser(tUser);
 
-                // Supabase'in kafasını karıştıran karmaşık OR sorgusu yerine, doğrudan iki basit arama yapıyoruz:
-                // 1. İhtimal: Sen Alıcı, O Satıcı
                 const { data: convo1 } = await supabase.from("conversations").select("id").eq("buyer_id", user.id).eq("seller_id", targetUserId).is("listing_id", null).maybeSingle();
-                // 2. İhtimal: Sen Satıcı, O Alıcı
                 const { data: convo2 } = await supabase.from("conversations").select("id").eq("buyer_id", targetUserId).eq("seller_id", user.id).is("listing_id", null).maybeSingle();
 
                 let currentConvoId = convo1?.id || convo2?.id || null;
 
-                // EĞER GERÇEKTEN ODA YOKSA YENİ AÇ (Çiftleme sorununun çözümü)
                 if (!currentConvoId) {
                     const { data: newConvo, error: insertError } = await supabase.from("conversations").insert([{ buyer_id: user.id, seller_id: targetUserId }]).select().single();
                     if (newConvo) currentConvoId = newConvo.id;
@@ -51,10 +46,8 @@ export default function DirectMessagePage() {
 
                 if (currentConvoId) {
                     setConversationId(currentConvoId);
-
                     const { data: msgs } = await supabase.from("messages").select("*").eq("conversation_id", currentConvoId).order("created_at", { ascending: true });
                     if (msgs) setMessages(msgs);
-
                     await supabase.from("messages").update({ is_read: true }).eq("conversation_id", currentConvoId).neq("sender_id", user.id).eq("is_read", false);
                 }
             } catch (err) {
@@ -64,22 +57,24 @@ export default function DirectMessagePage() {
                 setLoading(false);
             }
         };
-
         initChat();
     }, [user, targetUserId]);
 
-    // 2. Canlı Mesajlaşma (Sadece conversationId bulunduktan sonra çalışır)
+    // 2. Canlı Mesajlaşma (SADECE KARŞI TARAFIN MESAJLARINI DİNLER)
     useEffect(() => {
         if (!conversationId || !user) return;
-
         const channel = supabase
             .channel(`dm_${conversationId}`)
             .on(
                 "postgres_changes",
                 { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
                 (payload) => {
-                    setMessages((prev) => [...prev, payload.new]);
+                    // Kendi mesajımızı zaten butona basınca ekrana koyduğumuz için, antenden gelen yankıyı yoksayıyoruz. Sadece karşıdan gelenleri alıyoruz.
                     if (payload.new.sender_id !== user.id) {
+                        setMessages((prev) => {
+                            if (prev.find(m => m.id === payload.new.id)) return prev;
+                            return [...prev, payload.new];
+                        });
                         supabase.from("messages").update({ is_read: true }).eq("id", payload.new.id).then();
                     }
                 }
@@ -95,21 +90,37 @@ export default function DirectMessagePage() {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    // 3. Mesaj Gönderme (Ekrana düşmeme sorununun çözümü)
+    // 3. WHATSAPP MANTIĞI: ANINDA EKRANA BAS (Optimistik Güncelleme)
     const sendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newMessage.trim() || !conversationId || !user) return;
 
-        const msgText = newMessage;
-        setNewMessage(""); // Gönderiye basar basmaz kutuyu temizle
+        const msgText = newMessage.trim();
+        setNewMessage(""); // Kutuyu anında boşalt
 
+        // ANINDA EKRANA BAS (Kullanıcı bekletilmez)
+        const tempId = crypto.randomUUID();
+        const newMsgObj = {
+            id: tempId,
+            conversation_id: conversationId,
+            sender_id: user.id,
+            content: msgText,
+            created_at: new Date().toISOString(),
+            is_read: false
+        };
+        setMessages((prev) => [...prev, newMsgObj]);
+
+        // Arka planda veritabanına gönder
         const { error } = await supabase.from("messages").insert([
             { conversation_id: conversationId, sender_id: user.id, content: msgText, is_read: false },
         ]);
 
+        // Eğer internet koptuysa veya hata olduysa uyar ve ekranı düzelt
         if (error) {
             console.error("Gönderim hatası:", error);
-            setNewMessage(msgText); // Hata olursa mesajı kutuya geri koy
+            alert("Bağlantı hatası: Mesajınız iletilemedi!");
+            setMessages((prev) => prev.filter(m => m.id !== tempId)); // Gitmeyen mesajı sil
+            setNewMessage(msgText); // Yazıyı kutuya geri koy ki silinmesin
         }
     };
 
