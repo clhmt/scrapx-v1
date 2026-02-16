@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function Navbar() {
-    const { user, loading } = useAuth() as any;
+    const { user, loading } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -82,8 +82,11 @@ export default function Navbar() {
         fetchUnreadCount();
 
         const channel = supabase
-            .channel("navbar_unread_messages")
-            .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
+            .channel(`navbar_unread_messages_${user.id}`)
+            .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => {
+                fetchUnreadCount();
+            })
+            .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, () => {
                 fetchUnreadCount();
             })
             .subscribe();
