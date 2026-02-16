@@ -1,118 +1,169 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/components/AuthProvider";
+import { supabase } from "@/lib/supabaseClient";
+
+type InboxConversation = {
+    id: string;
+    buyer_id: string;
+    seller_id: string;
+    otherUserId: string;
+    otherUser: {
+        full_name: string | null;
+    };
+    lastMessage: {
+        id: string;
+        sender_id: string;
+        content: string;
+        created_at: string;
+        is_read: boolean;
+    } | null;
+};
+
+function formatMessageTime(isoDate: string) {
+    return new Date(isoDate).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
 
 export default function MessagesInboxPage() {
-    const { user } = useAuth() as any;
-    const [conversations, setConversations] = useState<any[]>([]);
+    const { user } = useAuth();
+    const [conversations, setConversations] = useState<InboxConversation[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchInbox = useCallback(async () => {
-        if (!user) return;
+        if (!user?.id) {
+            setConversations([]);
+            setLoading(false);
+            return;
+        }
+
         try {
-            const { data: convos } = await supabase
+            const { data: convos, error: convoError } = await supabase
                 .from("conversations")
-                .select("*")
+                .select("id,buyer_id,seller_id")
                 .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
 
-            if (!convos) {
+            if (convoError || !convos?.length) {
                 setConversations([]);
                 return;
             }
 
-            const inboxData = await Promise.all(
-                convos.map(async (c) => {
-                    const otherId = c.buyer_id === user.id ? c.seller_id : c.buyer_id;
-                    const { data: oUser } = await supabase.from("users").select("full_name").eq("id", otherId).single();
+            const normalized = await Promise.all(
+                convos.map(async (conversation) => {
+                    const otherUserId = conversation.buyer_id === user.id ? conversation.seller_id : conversation.buyer_id;
 
-                    const { data: lastMsg } = await supabase
-                        .from("messages")
-                        .select("*")
-                        .eq("conversation_id", c.id)
-                        .order("created_at", { ascending: false })
-                        .limit(1)
-                        .single();
+                    const [{ data: profile }, { data: lastMessage }] = await Promise.all([
+                        supabase.from("users").select("full_name").eq("id", otherUserId).maybeSingle(),
+                        supabase
+                            .from("messages")
+                            .select("id,sender_id,content,created_at,is_read")
+                            .eq("conversation_id", conversation.id)
+                            .order("created_at", { ascending: false })
+                            .limit(1)
+                            .maybeSingle(),
+                    ]);
 
                     return {
-                        ...c,
-                        otherUser: oUser || { full_name: "Kullanıcı" },
-                        otherUserId: otherId,
-                        lastMessage: lastMsg || null,
-                    };
+                        ...conversation,
+                        otherUserId,
+                        otherUser: {
+                            full_name: profile?.full_name ?? "Unknown User",
+                        },
+                        lastMessage: lastMessage ?? null,
+                    } as InboxConversation;
                 })
             );
 
-            const sorted = inboxData
-                .filter(c => c.lastMessage)
-                .sort((a, b) => new Date(b.lastMessage.created_at).getTime() - new Date(a.lastMessage.created_at).getTime());
+            const sorted = normalized
+                .filter((item) => item.lastMessage)
+                .sort(
+                    (a, b) =>
+                        new Date(b.lastMessage!.created_at).getTime() -
+                        new Date(a.lastMessage!.created_at).getTime()
+                );
 
             setConversations(sorted);
-        } catch (err) {
-            console.error(err);
+        } catch (error) {
+            console.error("Failed to load inbox:", error);
+            setConversations([]);
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user?.id]);
 
-    // Sayfaya her geri dönüldüğünde önbelleği ez ve veritabanından taze veriyi çek
     useEffect(() => {
         fetchInbox();
 
-        const handleFocus = () => fetchInbox();
-        window.addEventListener("focus", handleFocus);
-        document.addEventListener("visibilitychange", handleFocus);
-
-        const channel = supabase
-            .channel("inbox_realtime")
+        const messagesChannel = supabase
+            .channel(`messages_inbox_${user?.id ?? "guest"}`)
             .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
                 fetchInbox();
             })
             .subscribe();
 
-        return () => {
-            window.removeEventListener("focus", handleFocus);
-            document.removeEventListener("visibilitychange", handleFocus);
-            supabase.removeChannel(channel);
-        };
-    }, [fetchInbox]);
+        const handleVisibilitySync = () => fetchInbox();
+        const handleReadSync = () => fetchInbox();
 
-    if (!user) return <div className="p-10 text-center font-bold">Yükleniyor...</div>;
+        window.addEventListener("focus", handleVisibilitySync);
+        document.addEventListener("visibilitychange", handleVisibilitySync);
+        window.addEventListener("messages:read-sync", handleReadSync);
+
+        return () => {
+            supabase.removeChannel(messagesChannel);
+            window.removeEventListener("focus", handleVisibilitySync);
+            document.removeEventListener("visibilitychange", handleVisibilitySync);
+            window.removeEventListener("messages:read-sync", handleReadSync);
+        };
+    }, [fetchInbox, user?.id]);
+
+    const hasConversations = useMemo(() => conversations.length > 0, [conversations.length]);
+
+    if (!user) {
+        return <div className="p-10 text-center font-semibold text-gray-500">Loading...</div>;
+    }
 
     return (
         <div className="max-w-4xl mx-auto p-4 md:p-8">
-            <h1 className="text-2xl font-black mb-6 uppercase tracking-tighter">Gelen Kutusu</h1>
+            <h1 className="text-2xl font-black mb-6 uppercase tracking-tighter">MESSAGES</h1>
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 {loading ? (
-                    <div className="p-6 text-center text-gray-500">Mesajlar yükleniyor...</div>
-                ) : conversations.length === 0 ? (
-                    <div className="p-10 text-center text-gray-500">Henüz mesajınız yok.</div>
+                    <div className="p-6 text-center text-gray-500">Loading messages...</div>
+                ) : !hasConversations ? (
+                    <div className="p-10 text-center text-gray-500">No active conversations</div>
                 ) : (
                     <div className="divide-y divide-gray-100">
-                        {conversations.map((c) => {
-                            const msg = c.lastMessage;
-                            const isUnread = msg && msg.is_read === false && msg.sender_id !== user.id;
+                        {conversations.map((conversation) => {
+                            const message = conversation.lastMessage;
+                            if (!message) return null;
+
+                            const isUnread = message.is_read === false && message.sender_id !== user.id;
 
                             return (
-                                <Link key={c.id} href={`/messages/direct/${c.otherUserId}`} className="block hover:bg-gray-50 transition-colors p-4">
-                                    <div className="flex justify-between items-center">
-                                        <div className="flex-1 pr-4">
-                                            <h3 className={`text-lg ${isUnread ? 'font-black text-black' : 'font-semibold text-gray-800'}`}>
-                                                {c.otherUser.full_name}
+                                <Link
+                                    key={conversation.id}
+                                    href={`/messages/direct/${conversation.otherUserId}`}
+                                    className="block hover:bg-gray-50 transition-colors p-4"
+                                >
+                                    <div className="flex justify-between items-start gap-3">
+                                        <div className="min-w-0 flex-1 pr-3">
+                                            <h3 className={`truncate text-lg ${isUnread ? "font-black text-black" : "font-semibold text-gray-800"}`}>
+                                                {conversation.otherUser.full_name || "Unknown User"}
                                             </h3>
-                                            <p className={`text-sm mt-1 truncate ${isUnread ? 'font-bold text-gray-900' : 'text-gray-500'}`}>
-                                                {msg.content}
+                                            <p className={`mt-1 text-sm truncate ${isUnread ? "font-bold text-gray-900" : "text-gray-500"}`}>
+                                                {message.content}
                                             </p>
                                         </div>
-                                        <div className="flex flex-col items-end gap-2">
-                                            <span className={`text-xs ${isUnread ? 'text-green-600 font-bold' : 'text-gray-400'}`}>
-                                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+
+                                        <div className="flex flex-col items-end gap-2 shrink-0">
+                                            <span className={`text-xs ${isUnread ? "text-green-600 font-bold" : "text-gray-400"}`}>
+                                                {formatMessageTime(message.created_at)}
                                             </span>
-                                            {isUnread && (
-                                                <div className="w-3 h-3 bg-green-500 rounded-full shadow-sm"></div>
-                                            )}
+                                            {isUnread && <span className="w-3 h-3 bg-green-500 rounded-full shadow-sm" aria-label="Unread" />}
                                         </div>
                                     </div>
                                 </Link>
