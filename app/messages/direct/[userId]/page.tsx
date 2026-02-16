@@ -41,83 +41,98 @@ export default function DirectMessagePage({ params }: { params: { userId: string
     useEffect(() => {
         if (!user) return;
 
+        let isMounted = true;
+
         const initChat = async () => {
             setInitializing(true);
+            setConversationId(null);
 
-            const { data: tUser, error: targetError } = await supabase
-                .from("users")
-                .select("id, full_name, company_name, email")
-                .eq("id", params.userId)
-                .maybeSingle();
+            try {
+                const { data: tUser, error: targetError } = await supabase
+                    .from("users")
+                    .select("id, full_name, company_name, email")
+                    .eq("id", params.userId)
+                    .maybeSingle();
 
-            if (targetError) {
-                console.error("Target user fetch error:", targetError);
-            }
-
-            if (tUser) {
-                setTargetUser(tUser as TargetUser);
-            } else {
-                setTargetUser({ id: params.userId, full_name: null, company_name: null, email: null });
-            }
-
-            const { data: existingConvos, error: convoError } = await supabase
-                .from("conversations")
-                .select("id")
-                .is("listing_id", null)
-                .or(`and(buyer_id.eq.${user.id},seller_id.eq.${params.userId}),and(buyer_id.eq.${params.userId},seller_id.eq.${user.id})`)
-                .limit(1);
-
-            if (convoError) {
-                console.error("Conversation fetch error:", convoError);
-                setInitializing(false);
-                return;
-            }
-
-            let currentConvoId = existingConvos?.[0]?.id || null;
-
-            if (!currentConvoId) {
-                const { data: newConvo, error: newConvoError } = await supabase
-                    .from("conversations")
-                    .insert([{ buyer_id: user.id, seller_id: params.userId }])
-                    .select("id")
-                    .single();
-
-                if (newConvoError) {
-                    console.error("Conversation create error:", newConvoError);
-                    setInitializing(false);
-                    return;
+                if (targetError) {
+                    console.error("Target user fetch error:", targetError);
                 }
 
-                currentConvoId = newConvo.id;
+                if (isMounted) {
+                    setTargetUser((tUser as TargetUser) || { id: params.userId, full_name: null, company_name: null, email: null });
+                }
+
+                const { data: existingConvo, error: convoError } = await supabase
+                    .from("conversations")
+                    .select("id")
+                    .is("listing_id", null)
+                    .or(`and(buyer_id.eq.${user.id},seller_id.eq.${params.userId}),and(buyer_id.eq.${params.userId},seller_id.eq.${user.id})`)
+                    .order("created_at", { ascending: true })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (convoError) {
+                    throw convoError;
+                }
+
+                let resolvedConversationId = existingConvo?.id ?? null;
+
+                if (!resolvedConversationId) {
+                    const { data: insertedConvo, error: insertError } = await supabase
+                        .from("conversations")
+                        .insert([{ buyer_id: user.id, seller_id: params.userId, listing_id: null }])
+                        .select("id")
+                        .single();
+
+                    if (insertError) {
+                        throw insertError;
+                    }
+
+                    resolvedConversationId = insertedConvo.id;
+                }
+
+                if (!resolvedConversationId) {
+                    throw new Error("Conversation ID could not be resolved.");
+                }
+
+                if (isMounted) {
+                    setConversationId(resolvedConversationId);
+                }
+
+                const { data: msgs, error: messagesError } = await supabase
+                    .from("messages")
+                    .select("id, conversation_id, sender_id, content, created_at, is_read")
+                    .eq("conversation_id", resolvedConversationId)
+                    .order("created_at", { ascending: true });
+
+                if (messagesError) {
+                    throw messagesError;
+                }
+
+                if (isMounted) {
+                    setMessages((msgs || []) as MessageRow[]);
+                }
+
+                await supabase
+                    .from("messages")
+                    .update({ is_read: true })
+                    .eq("conversation_id", resolvedConversationId)
+                    .neq("sender_id", user.id)
+                    .eq("is_read", false);
+            } catch (error) {
+                console.error("Direct chat init error:", error);
+            } finally {
+                if (isMounted) {
+                    setInitializing(false);
+                }
             }
-
-            setConversationId(currentConvoId);
-
-            const { data: msgs, error: messagesError } = await supabase
-                .from("messages")
-                .select("id, conversation_id, sender_id, content, created_at, is_read")
-                .eq("conversation_id", currentConvoId)
-                .order("created_at", { ascending: true });
-
-            if (messagesError) {
-                console.error("Messages fetch error:", messagesError);
-            }
-
-            if (msgs) {
-                setMessages(msgs as MessageRow[]);
-            }
-
-            await supabase
-                .from("messages")
-                .update({ is_read: true })
-                .eq("conversation_id", currentConvoId)
-                .neq("sender_id", user.id)
-                .eq("is_read", false);
-
-            setInitializing(false);
         };
 
         initChat();
+
+        return () => {
+            isMounted = false;
+        };
     }, [user, params.userId]);
 
     useEffect(() => {
