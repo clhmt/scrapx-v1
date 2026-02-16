@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -23,7 +23,6 @@ function formatMessageTime(isoDate: string) {
 
 export default function DirectMessagePage() {
     const { user } = useAuth();
-    const router = useRouter();
     const params = useParams();
     const targetUserId = useMemo(() => {
         const rawParam = params?.userId;
@@ -203,13 +202,6 @@ export default function DirectMessagePage() {
         setMessages((prev) => prev.map((row) => (row.id === tempId ? (inserted as MessageRow) : row)));
     };
 
-    const handleBack = async () => {
-        if (conversationId && user?.id) {
-            await markConversationAsRead(conversationId, user.id);
-        }
-        router.push("/messages");
-    };
-
     if (!user) {
         return <div className="p-10 text-center text-gray-500">Loading...</div>;
     }
@@ -219,7 +211,9 @@ export default function DirectMessagePage() {
             <div className="p-10 text-center flex flex-col items-center">
                 <p className="text-red-500 font-bold mb-4">{errorMsg}</p>
                 <button
-                    onClick={() => router.push("/messages")}
+                    onClick={() => {
+                        window.location.href = "/messages";
+                    }}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg"
                 >
                     Back
@@ -239,7 +233,9 @@ export default function DirectMessagePage() {
                         <p className="text-sm text-gray-500">{targetUser?.company_name || "Direct Message"}</p>
                     </div>
                     <button
-                        onClick={handleBack}
+                        onClick={() => {
+                            window.location.href = '/messages';
+                        }}
                         className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
                     >
                         Back
