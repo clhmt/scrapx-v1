@@ -38,17 +38,6 @@ export default function DirectMessagePage() {
     const [errorMsg, setErrorMsg] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const markConversationAsRead = async (currentConversationId: string, currentUserId: string) => {
-        await supabase
-            .from("messages")
-            .update({ is_read: true })
-            .eq("conversation_id", currentConversationId)
-            .neq("sender_id", currentUserId)
-            .eq("is_read", false);
-
-        window.dispatchEvent(new Event("messages:read-sync"));
-    };
-
     useEffect(() => {
         if (!user?.id) return;
 
@@ -80,9 +69,9 @@ export default function DirectMessagePage() {
                     .is("listing_id", null)
                     .limit(1);
 
-                let currentConversationId = conversations?.[0]?.id ?? null;
+                let resolvedConversationId = conversations?.[0]?.id ?? null;
 
-                if (!currentConversationId) {
+                if (!resolvedConversationId) {
                     const { data: createdConversation, error: createError } = await supabase
                         .from("conversations")
                         .insert([{ buyer_id: user.id, seller_id: targetUserId }])
@@ -93,19 +82,27 @@ export default function DirectMessagePage() {
                         throw new Error("Failed to create a direct conversation.");
                     }
 
-                    currentConversationId = createdConversation.id;
+                    resolvedConversationId = createdConversation.id;
                 }
 
-                setConversationId(currentConversationId);
+                setConversationId(resolvedConversationId);
 
                 const { data: existingMessages } = await supabase
                     .from("messages")
                     .select("id,conversation_id,sender_id,content,created_at,is_read")
-                    .eq("conversation_id", currentConversationId)
+                    .eq("conversation_id", resolvedConversationId)
                     .order("created_at", { ascending: true });
 
                 setMessages(existingMessages ?? []);
-                await markConversationAsRead(currentConversationId, user.id);
+
+                await supabase
+                    .from("messages")
+                    .update({ is_read: true })
+                    .eq("conversation_id", resolvedConversationId)
+                    .neq("sender_id", user.id)
+                    .eq("is_read", false);
+
+                window.dispatchEvent(new Event("messages:read-sync"));
             } catch (error) {
                 console.error("Failed to initialize direct message:", error);
                 setErrorMsg("Unable to load this conversation.");
