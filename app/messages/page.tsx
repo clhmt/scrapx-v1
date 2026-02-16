@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
@@ -65,7 +65,7 @@ export default function MessagesInbox() {
     const [conversations, setConversations] = useState<ConversationItem[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchConversations = async (currentUserId: string) => {
+    const fetchConversations = useCallback(async (currentUserId: string) => {
         setLoading(true);
 
         const { data: conversationData, error } = await supabase
@@ -167,7 +167,7 @@ export default function MessagesInbox() {
 
         setConversations(filteredConversations);
         setLoading(false);
-    };
+    }, []);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -177,7 +177,49 @@ export default function MessagesInbox() {
                 fetchConversations(user.id);
             });
         }
-    }, [user, authLoading, router]);
+    }, [user, authLoading, router, fetchConversations]);
+
+    useEffect(() => {
+        if (!user?.id) return;
+
+        const refreshInbox = () => {
+            fetchConversations(user.id);
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                refreshInbox();
+            }
+        };
+
+        window.addEventListener("focus", refreshInbox);
+        window.addEventListener("pageshow", refreshInbox);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener("focus", refreshInbox);
+            window.removeEventListener("pageshow", refreshInbox);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, [user?.id, fetchConversations]);
+
+    useEffect(() => {
+        if (!user?.id) return;
+
+        const channel = supabase
+            .channel(`messages_inbox_${user.id}`)
+            .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => {
+                fetchConversations(user.id);
+            })
+            .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, () => {
+                fetchConversations(user.id);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user?.id, fetchConversations]);
 
     if (authLoading || loading) return <div className="p-20 text-center font-bold">Loading Messages...</div>;
 
