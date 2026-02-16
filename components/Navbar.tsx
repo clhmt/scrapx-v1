@@ -51,11 +51,28 @@ export default function Navbar() {
         if (!user?.id) return;
 
         const fetchUnreadCount = async () => {
+            const { data: conversations, error: conversationsError } = await supabase
+                .from("conversations")
+                .select("id")
+                .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
+
+            if (conversationsError) {
+                return;
+            }
+
+            const conversationIds = (conversations || []).map((conversation) => conversation.id);
+
+            if (conversationIds.length === 0) {
+                setUnreadCount(0);
+                return;
+            }
+
             const { count, error } = await supabase
                 .from("messages")
                 .select("id", { count: "exact", head: true })
-                .eq("receiver_id", user.id)
-                .eq("is_read", false);
+                .in("conversation_id", conversationIds)
+                .eq("is_read", false)
+                .neq("sender_id", user.id);
 
             if (!error) {
                 setUnreadCount(count || 0);
