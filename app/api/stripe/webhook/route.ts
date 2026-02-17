@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 
 type SubWithPeriodEnd = Stripe.Subscription & { current_period_end?: number | null };
+type InvoiceWithSubscription = Stripe.Invoice & { subscription?: string | Stripe.Subscription | null };
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -13,6 +14,10 @@ const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
 function toIsoDate(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString();
+}
+
+function getInvoiceSubscriptionId(invoice: InvoiceWithSubscription): string | null {
+  return typeof invoice.subscription === "string" ? invoice.subscription : null;
 }
 
 async function getSubscription(stripeClient: Stripe, subscriptionId: string): Promise<SubWithPeriodEnd> {
@@ -194,9 +199,9 @@ export async function POST(request: NextRequest) {
     }
 
     case "invoice.paid": {
-      const invoice = event.data.object as Stripe.Invoice;
+      const invoice = event.data.object as InvoiceWithSubscription;
       const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
-      const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : null;
+      const subscriptionId = getInvoiceSubscriptionId(invoice);
 
       if (!customerId) break;
 
@@ -229,9 +234,9 @@ export async function POST(request: NextRequest) {
     }
 
     case "invoice.payment_failed": {
-      const invoice = event.data.object as Stripe.Invoice;
+      const invoice = event.data.object as InvoiceWithSubscription;
       const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
-      const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : null;
+      const subscriptionId = getInvoiceSubscriptionId(invoice);
 
       if (!customerId) break;
 
