@@ -14,9 +14,7 @@ function toIsoDate(epochSeconds?: number | null) {
   return new Date(epochSeconds * 1000).toISOString();
 }
 
-function isSubscriptionObject(
-  obj: unknown
-): obj is Stripe.Subscription | Stripe.DeletedSubscription {
+function isSubscriptionObject(obj: unknown): obj is Stripe.Subscription {
   if (!obj || typeof obj !== "object") return false;
   const maybeObject = obj as { object?: unknown };
   return maybeObject.object === "subscription";
@@ -148,7 +146,7 @@ export async function POST(request: NextRequest) {
         return new Response("ok", { status: 200 });
       }
 
-      const subscription = obj as Stripe.Subscription | Stripe.DeletedSubscription;
+      const subscription = obj as Stripe.Subscription;
 
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
@@ -160,11 +158,10 @@ export async function POST(request: NextRequest) {
 
       if (!userId) break;
 
-      const status = (subscription as Stripe.Subscription).status ?? "canceled";
+      const status = subscription.status ?? "canceled";
       const currentPeriodEnd =
-        "current_period_end" in subscription &&
-        typeof (subscription as Stripe.Subscription).current_period_end === "number"
-          ? toIsoDate((subscription as Stripe.Subscription).current_period_end)
+        typeof subscription.current_period_end === "number"
+          ? toIsoDate(subscription.current_period_end)
           : null;
       const isPremium = status === "active" || status === "trialing";
 
@@ -186,7 +183,7 @@ export async function POST(request: NextRequest) {
         return new Response("ok", { status: 200 });
       }
 
-      const subscription = obj as Stripe.Subscription | Stripe.DeletedSubscription;
+      const subscription = obj as Stripe.Subscription;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
       if (!customerId) break;
