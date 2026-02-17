@@ -14,6 +14,14 @@ function toIsoDate(epochSeconds?: number | null) {
   return new Date(epochSeconds * 1000).toISOString();
 }
 
+function isSubscriptionObject(
+  obj: unknown
+): obj is Stripe.Subscription | Stripe.DeletedSubscription {
+  if (!obj || typeof obj !== "object") return false;
+  const maybeObject = obj as { object?: unknown };
+  return maybeObject.object === "subscription";
+}
+
 async function upsertEntitlement({
   adminClient,
   userId,
@@ -112,9 +120,14 @@ export async function POST(request: NextRequest) {
       let status = "active";
 
       if (subscriptionId) {
-        const subscription = (await stripe.subscriptions.retrieve(subscriptionId)) as any;
-        currentPeriodEnd = toIsoDate(subscription.current_period_end);
-        status = subscription.status;
+        const subscriptionResponse = await stripe.subscriptions.retrieve(subscriptionId);
+        const subscription = subscriptionResponse as unknown as Stripe.Subscription;
+
+        currentPeriodEnd =
+          typeof subscription.current_period_end === "number"
+            ? toIsoDate(subscription.current_period_end)
+            : null;
+        status = typeof subscription.status === "string" ? subscription.status : "active";
       }
 
       await upsertEntitlement({
@@ -131,12 +144,11 @@ export async function POST(request: NextRequest) {
 
     case "customer.subscription.updated": {
       const obj = event.data.object;
-      const subscription = obj as Stripe.Subscription;
-
-      if (typeof subscription.current_period_end !== "number") {
-        console.warn("Stripe subscription missing current_period_end", { eventId: event.id });
-        return NextResponse.json({ received: true, ignored: true });
+      if (!isSubscriptionObject(obj)) {
+        return new Response("ok", { status: 200 });
       }
+
+      const subscription = obj as Stripe.Subscription | Stripe.DeletedSubscription;
 
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
@@ -148,8 +160,12 @@ export async function POST(request: NextRequest) {
 
       if (!userId) break;
 
-      const status = subscription.status;
-      const currentPeriodEnd = toIsoDate(subscription.current_period_end);
+      const status = (subscription as Stripe.Subscription).status ?? "canceled";
+      const currentPeriodEnd =
+        "current_period_end" in subscription &&
+        typeof (subscription as Stripe.Subscription).current_period_end === "number"
+          ? toIsoDate((subscription as Stripe.Subscription).current_period_end)
+          : null;
       const isPremium = status === "active" || status === "trialing";
 
       await upsertEntitlement({
@@ -166,7 +182,11 @@ export async function POST(request: NextRequest) {
 
     case "customer.subscription.deleted": {
       const obj = event.data.object;
-      const subscription = obj as Stripe.Subscription;
+      if (!isSubscriptionObject(obj)) {
+        return new Response("ok", { status: 200 });
+      }
+
+      const subscription = obj as Stripe.Subscription | Stripe.DeletedSubscription;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
       if (!customerId) break;
