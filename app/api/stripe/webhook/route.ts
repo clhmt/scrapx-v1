@@ -130,7 +130,14 @@ export async function POST(request: NextRequest) {
     }
 
     case "customer.subscription.updated": {
-      const subscription = event.data.object as Stripe.Subscription;
+      const obj = event.data.object;
+      const subscription = obj as Stripe.Subscription;
+
+      if (typeof subscription.current_period_end !== "number") {
+        console.warn("Stripe subscription missing current_period_end", { eventId: event.id });
+        return NextResponse.json({ received: true, ignored: true });
+      }
+
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
       if (!customerId) break;
@@ -158,7 +165,8 @@ export async function POST(request: NextRequest) {
     }
 
     case "customer.subscription.deleted": {
-      const subscription = event.data.object as Stripe.Subscription;
+      const obj = event.data.object;
+      const subscription = obj as Stripe.Subscription;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
       if (!customerId) break;
