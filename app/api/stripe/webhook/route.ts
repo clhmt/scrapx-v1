@@ -104,7 +104,6 @@ export async function POST(request: NextRequest) {
     if (idempotencyError.code === "23505") {
       return NextResponse.json({ received: true, duplicate: true });
     }
-
     return NextResponse.json({ error: idempotencyError.message }, { status: 500 });
   }
 
