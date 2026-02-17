@@ -51,7 +51,12 @@ Make sure these are set locally and in deployment:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (required by `POST /api/listings/delete` for storage cleanup + secure owner-checked delete)
+- `SUPABASE_SERVICE_ROLE_KEY` (required by secure server routes like listing deletion + Stripe webhooks)
+- `NEXT_PUBLIC_SITE_URL` (used for Stripe checkout success/cancel redirect URLs)
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_PREMIUM_MONTHLY`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (optional; only required for client-side Stripe.js usage)
 
 ### Troubleshooting checklist
 - If listing delete fails with `401`, confirm the user session token is present in client auth.
