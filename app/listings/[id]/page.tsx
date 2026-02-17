@@ -5,24 +5,52 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/components/AuthProvider";
+import Link from "next/link";
+import { fetchPremiumOfferCount, fetchPublicSellerProfile, getDisplayName } from "@/lib/sellerProfile";
 
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
     return new Intl.NumberFormat('en-US').format(price) + " USD";
 };
 
+type ListingData = {
+    id: string;
+    user_id: string;
+    title: string;
+    category?: string;
+    city?: string;
+    country?: string;
+    created_at: string;
+    price: number;
+    unit?: string;
+    material_type?: string;
+    condition?: string;
+    quantity?: number;
+    packaging?: string;
+    description?: string;
+    images?: string[];
+};
+
+type SellerData = {
+    full_name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    company_name?: string | null;
+};
+
 export default function ListingDetail() {
     const { id } = useParams();
     const router = useRouter();
-    const { user } = useAuth() as any;
+    const { user } = useAuth();
 
-    const [listing, setListing] = useState<any>(null);
-    const [seller, setSeller] = useState<any>(null);
+    const [listing, setListing] = useState<ListingData | null>(null);
+    const [seller, setSeller] = useState<SellerData | null>(null);
     const [loading, setLoading] = useState(true);
     const [showOfferModal, setShowOfferModal] = useState(false);
     const [offerTonnage, setOfferTonnage] = useState("");
     const [offerPricePerTon, setOfferPricePerTon] = useState("");
     const [submittingOffer, setSubmittingOffer] = useState(false);
+    const [premiumOfferCount, setPremiumOfferCount] = useState<number | null>(null);
 
     // YENİ: Hafıza State'leri
     const [isSaved, setIsSaved] = useState(false);
@@ -39,9 +67,11 @@ export default function ListingDetail() {
         if (listingData) {
             setListing(listingData);
 
-            // Satıcı bilgisini çek (şimdilik emailini gösteriyoruz, ileride profil tablosu eklenebilir)
-            const { data: sellerData } = await supabase.from("users").select("*").eq("id", listingData.user_id).single();
-            setSeller(sellerData || { email: "mehmet@mntpaper.com", full_name: "Mehmet" });
+            const sellerProfile = await fetchPublicSellerProfile(listingData.user_id);
+            setSeller(sellerProfile || { full_name: "ScrapX Seller", company_name: "ScrapX Member" });
+
+            const offerCount = await fetchPremiumOfferCount(listingData.id);
+            setPremiumOfferCount(offerCount);
 
             // Kullanıcı giriş yapmışsa Follow ve Save durumlarını kontrol et
             if (user) {
@@ -257,17 +287,25 @@ export default function ListingDetail() {
                                 <div className="flex justify-between border-b pb-3"><span className="text-gray-500 font-bold">Quantity</span><span className="font-black text-gray-900">{listing.quantity} {listing.unit}</span></div>
                                 <div className="flex justify-between pb-2"><span className="text-gray-500 font-bold">Packaging</span><span className="font-black text-gray-900">{listing.packaging || 'Bales'}</span></div>
                             </div>
+
+                            {premiumOfferCount !== null ? (
+                                <p className="text-xs font-bold text-emerald-700 mt-6">This listing has {premiumOfferCount} offers.</p>
+                            ) : (
+                                <p className="text-xs font-bold text-gray-400 mt-6">Premium insight</p>
+                            )}
                         </div>
 
                         {/* SATICI (MEHMET) KARTI */}
                         <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
                             <div className="flex items-center gap-4 mb-6">
                                 <div className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center text-white font-black text-xl">
-                                    {seller?.full_name?.[0]?.toUpperCase() || 'M'}
+                                    {getDisplayName(seller)?.[0]?.toUpperCase() || 'S'}
                                 </div>
                                 <div>
-                                    <h3 className="font-black text-gray-900 text-lg">{seller?.full_name || 'Mehmet'}</h3>
-                                    <p className="text-xs text-gray-500 font-bold mb-2 truncate max-w-[200px]">{seller?.company_name || 'MNT Paper and Plastics...'}</p>
+                                    <Link href={`/profile/${listing.user_id}`} className="font-black text-gray-900 text-lg hover:underline">
+                                        {getDisplayName(seller)}
+                                    </Link>
+                                    <p className="text-xs text-gray-500 font-bold mb-2 truncate max-w-[200px]">{seller?.company_name || 'ScrapX Member'}</p>
 
                                     {/* FOLLOW BUTONU (Hafızaya Bağlı) */}
                                     <button
@@ -298,9 +336,9 @@ export default function ListingDetail() {
                             >
                                 Make an Offer
                             </button>
-                            <button className="w-full bg-white border-2 border-gray-200 text-gray-600 py-3 rounded-xl font-black text-sm hover:bg-gray-50 transition">
+                            <Link href={`/profile/${listing.user_id}`} className="w-full block text-center bg-white border-2 border-gray-200 text-gray-600 py-3 rounded-xl font-black text-sm hover:bg-gray-50 transition">
                                 View Full Profile
-                            </button>
+                            </Link>
                         </div>
                     </div>
                 </div>
