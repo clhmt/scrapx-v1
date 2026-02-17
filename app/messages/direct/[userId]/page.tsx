@@ -21,7 +21,31 @@ type MessageRow = {
     } | null;
 };
 
+type MessageQueryRow = Omit<MessageRow, "offer"> & {
+    offer:
+        | {
+              tonnage: number;
+              price_per_ton: number;
+              currency: string;
+              status: string;
+          }
+        | {
+              tonnage: number;
+              price_per_ton: number;
+              currency: string;
+              status: string;
+          }[]
+        | null;
+};
+
 const messageSelect = "id,conversation_id,sender_id,content,created_at,is_read,offer_id,offer:offers(tonnage,price_per_ton,currency,status)";
+
+function normalizeMessageRow(message: MessageQueryRow): MessageRow {
+    return {
+        ...message,
+        offer: Array.isArray(message.offer) ? (message.offer[0] ?? null) : message.offer,
+    };
+}
 
 function formatMessageTime(isoDate: string) {
     return new Date(isoDate).toLocaleTimeString([], {
@@ -56,7 +80,7 @@ export default function DirectMessagePage() {
             .eq("id", messageId)
             .maybeSingle();
 
-        return (data as MessageRow | null) ?? null;
+        return data ? normalizeMessageRow(data as MessageQueryRow) : null;
     };
 
     useEffect(() => {
@@ -118,7 +142,7 @@ export default function DirectMessagePage() {
                     .eq("conversation_id", resolvedConversationId)
                     .order("created_at", { ascending: true });
 
-                const normalizedMessages = existingMessages ?? [];
+                const normalizedMessages = ((existingMessages as MessageQueryRow[] | null) ?? []).map(normalizeMessageRow);
                 setMessages(normalizedMessages);
 
                 const unreadIds = normalizedMessages
@@ -235,7 +259,8 @@ export default function DirectMessagePage() {
             return;
         }
 
-        setMessages((prev) => prev.map((row) => (row.id === tempId ? (inserted as MessageRow) : row)));
+        const normalizedInserted = normalizeMessageRow(inserted as MessageQueryRow);
+        setMessages((prev) => prev.map((row) => (row.id === tempId ? normalizedInserted : row)));
     };
 
     if (!user) {
