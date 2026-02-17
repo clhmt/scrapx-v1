@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/lib/supabase/database.types";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
@@ -23,7 +23,7 @@ async function upsertEntitlement({
   status,
   currentPeriodEnd,
 }: {
-  adminClient: ReturnType<typeof createClient>;
+  adminClient: SupabaseClient<Database>;
   userId: string;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -31,7 +31,7 @@ async function upsertEntitlement({
   status: string;
   currentPeriodEnd: string | null;
 }) {
-  return (adminClient.from("user_entitlements") as any).upsert(
+  return adminClient.from("user_entitlements").upsert(
     {
       user_id: userId,
       is_premium: isPremium,
@@ -46,9 +46,9 @@ async function upsertEntitlement({
   );
 }
 
-async function resolveUserIdFromCustomer(adminClient: ReturnType<typeof createClient>, customerId: string) {
-  const { data } = await (adminClient
-    .from("stripe_customers") as any)
+async function resolveUserIdFromCustomer(adminClient: SupabaseClient<Database>, customerId: string) {
+  const { data } = await adminClient
+    .from("stripe_customers")
     .select("user_id")
     .eq("stripe_customer_id", customerId)
     .maybeSingle();
@@ -57,7 +57,7 @@ async function resolveUserIdFromCustomer(adminClient: ReturnType<typeof createCl
 }
 
 export async function POST(request: NextRequest) {
-  if (!stripe || !stripeWebhookSecret || !supabaseUrl || !supabaseServiceRoleKey) {
+  if (!stripe || !stripeWebhookSecret) {
     return NextResponse.json({ error: "Server is missing Stripe webhook configuration" }, { status: 500 });
   }
 
@@ -75,11 +75,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid Stripe signature" }, { status: 400 });
   }
 
-  const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const adminClient = createAdminClient();
 
-  const { error: idempotencyError } = await (adminClient.from("stripe_events") as any).insert({
+  const { error: idempotencyError } = await adminClient.from("stripe_events").insert({
     id: event.id,
     type: event.type,
   });
@@ -101,7 +99,7 @@ export async function POST(request: NextRequest) {
       if (!userId) break;
 
       if (customerId) {
-        await (adminClient.from("stripe_customers") as any).upsert(
+        await adminClient.from("stripe_customers").upsert(
           {
             user_id: userId,
             stripe_customer_id: customerId,
