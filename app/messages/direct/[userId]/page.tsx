@@ -458,16 +458,16 @@ export default function DirectMessagePage() {
                                                 <div className="pt-1 flex gap-2">
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleOfferAction(message.offer.id, "accepted")}
-                                                        disabled={updatingOfferId === message.offer.id}
+                                                        onClick={() => handleOfferAction(message.offer!.id, "accepted")}
+                                                        disabled={updatingOfferId === message.offer!.id}
                                                         className="px-3 py-1 text-xs font-semibold rounded-md border border-green-600 text-green-700 bg-white hover:bg-green-50 disabled:opacity-60"
                                                     >
                                                         Accept
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleOfferAction(message.offer.id, "rejected")}
-                                                        disabled={updatingOfferId === message.offer.id}
+                                                        onClick={() => handleOfferAction(message.offer!.id, "rejected")}
+                                                        disabled={updatingOfferId === message.offer!.id}
                                                         className="px-3 py-1 text-xs font-semibold rounded-md border border-red-600 text-red-700 bg-white hover:bg-red-50 disabled:opacity-60"
                                                     >
                                                         Reject
