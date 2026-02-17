@@ -12,7 +12,16 @@ type MessageRow = {
     content: string;
     created_at: string;
     is_read: boolean;
+    offer_id: string | null;
+    offer: {
+        tonnage: number;
+        price_per_ton: number;
+        currency: string;
+        status: string;
+    } | null;
 };
+
+const messageSelect = "id,conversation_id,sender_id,content,created_at,is_read,offer_id,offer:offers(tonnage,price_per_ton,currency,status)";
 
 function formatMessageTime(isoDate: string) {
     return new Date(isoDate).toLocaleTimeString([], {
@@ -39,6 +48,16 @@ export default function DirectMessagePage() {
     const [loading, setLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const fetchMessageById = async (messageId: string) => {
+        const { data } = await supabase
+            .from("messages")
+            .select(messageSelect)
+            .eq("id", messageId)
+            .maybeSingle();
+
+        return (data as MessageRow | null) ?? null;
+    };
 
     useEffect(() => {
         if (!user?.id) return;
@@ -95,7 +114,7 @@ export default function DirectMessagePage() {
 
                 const { data: existingMessages } = await supabase
                     .from("messages")
-                    .select("id,conversation_id,sender_id,content,created_at,is_read")
+                    .select(messageSelect)
                     .eq("conversation_id", resolvedConversationId)
                     .order("created_at", { ascending: true });
 
@@ -143,7 +162,10 @@ export default function DirectMessagePage() {
                     filter: `conversation_id=eq.${conversationId}`,
                 },
                 async (payload) => {
-                    const insertedMessage = payload.new as MessageRow;
+                    const payloadMessage = payload.new as { id: string; sender_id: string; is_read: boolean };
+                    const insertedMessage = await fetchMessageById(payloadMessage.id);
+
+                    if (!insertedMessage) return;
 
                     setMessages((prev) => {
                         if (prev.some((row) => row.id === insertedMessage.id)) return prev;
@@ -187,6 +209,8 @@ export default function DirectMessagePage() {
             content,
             created_at: new Date().toISOString(),
             is_read: false,
+            offer_id: null,
+            offer: null,
         };
 
         setMessages((prev) => [...prev, optimisticMessage]);
@@ -201,7 +225,7 @@ export default function DirectMessagePage() {
                     is_read: false,
                 },
             ])
-            .select("id,conversation_id,sender_id,content,created_at,is_read")
+            .select(messageSelect)
             .single();
 
         if (error || !inserted) {
@@ -281,7 +305,23 @@ export default function DirectMessagePage() {
                                             : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm"
                                     }`}
                                 >
-                                    <p>{message.content}</p>
+                                    {message.offer_id && message.offer ? (
+                                        <div className="space-y-1">
+                                            <p className={`text-[11px] font-black tracking-wide ${isMine ? "text-green-100" : "text-gray-500"}`}>OFFER</p>
+                                            <p className="font-semibold">
+                                                {message.offer.tonnage} tons at ${new Intl.NumberFormat("en-US").format(message.offer.price_per_ton)}/ton
+                                            </p>
+                                            <p className="font-semibold">
+                                                Total: ${new Intl.NumberFormat("en-US").format(message.offer.tonnage * message.offer.price_per_ton)}
+                                            </p>
+                                            <p className={`text-sm font-bold ${isMine ? "text-green-100" : "text-gray-600"}`}>
+                                                Status: {message.offer.status.charAt(0).toUpperCase() + message.offer.status.slice(1)}
+                                            </p>
+                                            {!!message.content && <p>{message.content}</p>}
+                                        </div>
+                                    ) : (
+                                        <p>{message.content}</p>
+                                    )}
                                     <span className={`text-[10px] block mt-1 ${isMine ? "text-green-200" : "text-gray-400"}`}>
                                         {formatMessageTime(message.created_at)}
                                     </span>

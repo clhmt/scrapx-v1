@@ -19,6 +19,10 @@ export default function ListingDetail() {
     const [listing, setListing] = useState<any>(null);
     const [seller, setSeller] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [showOfferModal, setShowOfferModal] = useState(false);
+    const [offerTonnage, setOfferTonnage] = useState("");
+    const [offerPricePerTon, setOfferPricePerTon] = useState("");
+    const [submittingOffer, setSubmittingOffer] = useState(false);
 
     // YENİ: Hafıza State'leri
     const [isSaved, setIsSaved] = useState(false);
@@ -83,6 +87,109 @@ export default function ListingDetail() {
         if (!user) return router.push("/auth");
         // İleride detaylı mesajlaşma ekranına yönlendirecek
         router.push(`/messages/${listing.id}`);
+    };
+
+    const handleOfferSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!user) {
+            router.push("/auth");
+            return;
+        }
+
+        if (!listing?.id || !listing?.user_id) {
+            alert("Listing data is unavailable. Please refresh and try again.");
+            return;
+        }
+
+        if (user.id === listing.user_id) {
+            alert("You cannot make an offer on your own listing.");
+            return;
+        }
+
+        const tonnage = Number(offerTonnage);
+        const pricePerTon = Number(offerPricePerTon);
+
+        if (!Number.isFinite(tonnage) || tonnage <= 0) {
+            alert("Tonnage must be greater than 0.");
+            return;
+        }
+
+        if (!Number.isFinite(pricePerTon) || pricePerTon <= 0) {
+            alert("Price per ton must be greater than 0.");
+            return;
+        }
+
+        setSubmittingOffer(true);
+
+        try {
+            const { data: offer, error: offerError } = await supabase
+                .from("offers")
+                .insert([
+                    {
+                        listing_id: listing.id,
+                        buyer_id: user.id,
+                        tonnage,
+                        price_per_ton: pricePerTon,
+                        currency: "USD",
+                    },
+                ])
+                .select("id")
+                .single();
+
+            if (offerError || !offer?.id) {
+                alert("Failed to create the offer. Please try again.");
+                return;
+            }
+
+            let convId: string | null = null;
+            const { data: existingConv } = await supabase
+                .from("conversations")
+                .select("id")
+                .eq("listing_id", listing.id)
+                .eq("buyer_id", user.id)
+                .maybeSingle();
+
+            convId = existingConv?.id ?? null;
+
+            if (!convId) {
+                const { data: createdConversation, error: createConversationError } = await supabase
+                    .from("conversations")
+                    .insert([{ listing_id: listing.id, buyer_id: user.id, seller_id: listing.user_id }])
+                    .select("id")
+                    .single();
+
+                if (createConversationError || !createdConversation?.id) {
+                    alert("Offer was created but conversation setup failed.");
+                    return;
+                }
+
+                convId = createdConversation.id;
+            }
+
+            const { error: messageError } = await supabase.from("messages").insert([
+                {
+                    conversation_id: convId,
+                    sender_id: user.id,
+                    content: "Offer sent",
+                    is_read: false,
+                    offer_id: offer.id,
+                },
+            ]);
+
+            if (messageError) {
+                alert("Offer created but message delivery failed.");
+                return;
+            }
+
+            setShowOfferModal(false);
+            setOfferTonnage("");
+            setOfferPricePerTon("");
+
+            router.push(`/messages/direct/${listing.user_id}?convo=${convId}`);
+        } finally {
+            setSubmittingOffer(false);
+        }
     };
 
     if (loading) return <div className="p-20 text-center font-bold">Loading...</div>;
@@ -179,6 +286,18 @@ export default function ListingDetail() {
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                                 Chat with Seller
                             </button>
+                            <button
+                                onClick={() => {
+                                    if (!user) {
+                                        router.push("/auth");
+                                        return;
+                                    }
+                                    setShowOfferModal(true);
+                                }}
+                                className="w-full bg-white border-2 border-green-600 text-green-600 py-3 rounded-xl font-black text-sm hover:bg-green-50 transition mb-3"
+                            >
+                                Make an Offer
+                            </button>
                             <button className="w-full bg-white border-2 border-gray-200 text-gray-600 py-3 rounded-xl font-black text-sm hover:bg-gray-50 transition">
                                 View Full Profile
                             </button>
@@ -186,6 +305,64 @@ export default function ListingDetail() {
                     </div>
                 </div>
             </div>
+
+            {showOfferModal && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+                    <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-xl p-6">
+                        <h2 className="text-xl font-black text-gray-900 mb-4">Make an Offer</h2>
+
+                        <form onSubmit={handleOfferSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">Tonnage</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={offerTonnage}
+                                    onChange={(event) => setOfferTonnage(event.target.value)}
+                                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-green-600"
+                                    placeholder="Enter tonnage"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">Price per Ton (USD)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={offerPricePerTon}
+                                    onChange={(event) => setOfferPricePerTon(event.target.value)}
+                                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-green-600"
+                                    placeholder="Enter price per ton"
+                                    required
+                                />
+                            </div>
+
+                            <div className="text-sm font-bold text-gray-600">Currency: USD</div>
+
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowOfferModal(false)}
+                                    className="flex-1 py-3 border-2 border-gray-200 rounded-xl font-black text-gray-600 hover:bg-gray-50"
+                                    disabled={submittingOffer}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 bg-[#52A04A] text-white rounded-xl font-black hover:bg-[#43873c] disabled:opacity-50"
+                                    disabled={submittingOffer}
+                                >
+                                    {submittingOffer ? "Submitting..." : "Send Offer"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
