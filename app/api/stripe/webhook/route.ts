@@ -13,6 +13,16 @@ function toIsoDate(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString();
 }
 
+async function getSubscription(stripeClient: Stripe, subscriptionId: string): Promise<Stripe.Subscription> {
+  const res = await stripeClient.subscriptions.retrieve(subscriptionId);
+  const sub =
+    typeof res === "object" && res !== null && "data" in (res as object)
+      ? (res as { data: Stripe.Subscription }).data
+      : res;
+
+  return sub as Stripe.Subscription;
+}
+
 async function upsertEntitlement({
   adminClient,
   userId,
@@ -113,7 +123,7 @@ export async function POST(request: NextRequest) {
       let currentPeriodEnd: string | null = null;
 
       if (subscriptionId) {
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const subscription = await getSubscription(stripe, subscriptionId);
         status = subscription.status;
         currentPeriodEnd =
           typeof subscription.current_period_end === "number"
@@ -181,7 +191,7 @@ export async function POST(request: NextRequest) {
         let currentPeriodEnd: string | null = null;
 
         if (subscriptionId) {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const subscription = await getSubscription(stripe, subscriptionId);
           status = subscription.status;
           currentPeriodEnd =
             typeof subscription.current_period_end === "number"
