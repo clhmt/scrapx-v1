@@ -14,31 +14,39 @@ type MessageRow = {
     is_read: boolean;
     offer_id: string | null;
     offer: {
+        id: string;
         tonnage: number;
         price_per_ton: number;
         currency: string;
         status: string;
+        seller_id: string;
     } | null;
 };
 
 type MessageQueryRow = Omit<MessageRow, "offer"> & {
     offer:
         | {
+              id: string;
               tonnage: number;
               price_per_ton: number;
               currency: string;
               status: string;
+              seller_id: string;
           }
         | {
+              id: string;
               tonnage: number;
               price_per_ton: number;
               currency: string;
               status: string;
+              seller_id: string;
           }[]
         | null;
 };
 
-const messageSelect = "id,conversation_id,sender_id,content,created_at,is_read,offer_id,offer:offers(tonnage,price_per_ton,currency,status)";
+type OfferStatus = "pending" | "accepted" | "rejected";
+
+const messageSelect = "id,conversation_id,sender_id,content,created_at,is_read,offer_id,offer:offers(id,tonnage,price_per_ton,currency,status,seller_id)";
 
 function normalizeMessageRow(message: MessageQueryRow): MessageRow {
     return {
@@ -71,7 +79,9 @@ export default function DirectMessagePage() {
     const [targetUser, setTargetUser] = useState<{ full_name: string | null; company_name: string | null } | null>(null);
     const [loading, setLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState("");
+    const [updatingOfferId, setUpdatingOfferId] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const offerIdsRef = useRef<Set<string>>(new Set());
 
     const fetchMessageById = async (messageId: string) => {
         const { data } = await supabase
@@ -215,6 +225,100 @@ export default function DirectMessagePage() {
     }, [conversationId, user?.id]);
 
     useEffect(() => {
+        offerIdsRef.current = new Set(messages.map((message) => message.offer_id).filter((offerId): offerId is string => !!offerId));
+    }, [messages]);
+
+    useEffect(() => {
+        if (!conversationId) return;
+
+        const offerChannel = supabase
+            .channel(`direct_offers_${conversationId}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "offers",
+                },
+                async (payload) => {
+                    const updatedOfferId = (payload.new as { id?: string } | null)?.id;
+                    if (!updatedOfferId) return;
+
+                    if (!offerIdsRef.current.has(updatedOfferId)) return;
+
+                    const { data: refreshedOffer } = await supabase
+                        .from("offers")
+                        .select("id,tonnage,price_per_ton,currency,status,seller_id")
+                        .eq("id", updatedOfferId)
+                        .maybeSingle();
+
+                    if (!refreshedOffer) return;
+
+                    setMessages((prev) =>
+                        prev.map((message) =>
+                            message.offer_id === updatedOfferId
+                                ? {
+                                      ...message,
+                                      offer: {
+                                          id: refreshedOffer.id,
+                                          tonnage: refreshedOffer.tonnage,
+                                          price_per_ton: refreshedOffer.price_per_ton,
+                                          currency: refreshedOffer.currency,
+                                          status: refreshedOffer.status,
+                                          seller_id: refreshedOffer.seller_id,
+                                      },
+                                  }
+                                : message
+                        )
+                    );
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(offerChannel);
+        };
+    }, [conversationId]);
+
+    const handleOfferAction = async (offerId: string, status: OfferStatus) => {
+        if (!user?.id || (status !== "accepted" && status !== "rejected")) return;
+
+        setUpdatingOfferId(offerId);
+
+        const { data: updatedOffer, error } = await supabase
+            .from("offers")
+            .update({ status })
+            .eq("id", offerId)
+            .eq("seller_id", user.id)
+            .eq("status", "pending")
+            .select("id,status")
+            .maybeSingle();
+
+        if (error || !updatedOffer) {
+            console.error("Failed to update offer status:", error);
+            alert("Failed to update offer status. Please try again.");
+            setUpdatingOfferId(null);
+            return;
+        }
+
+        setMessages((prev) =>
+            prev.map((message) =>
+                message.offer_id === offerId && message.offer
+                    ? {
+                          ...message,
+                          offer: {
+                              ...message.offer,
+                              status,
+                          },
+                      }
+                    : message
+            )
+        );
+
+        setUpdatingOfferId(null);
+    };
+
+    useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
@@ -331,7 +435,15 @@ export default function DirectMessagePage() {
                                     }`}
                                 >
                                     {message.offer_id && message.offer ? (
-                                        <div className="space-y-1">
+                                        <div
+                                            className={`space-y-1 rounded-lg p-2 -mx-1 ${
+                                                message.offer.status === "accepted"
+                                                    ? "border border-green-200 bg-green-50/60"
+                                                    : message.offer.status === "rejected"
+                                                      ? "border border-red-200 bg-red-50/60"
+                                                      : ""
+                                            }`}
+                                        >
                                             <p className={`text-[11px] font-black tracking-wide ${isMine ? "text-green-100" : "text-gray-500"}`}>OFFER</p>
                                             <p className="font-semibold">
                                                 {message.offer.tonnage} tons at ${new Intl.NumberFormat("en-US").format(message.offer.price_per_ton)}/ton
@@ -342,6 +454,26 @@ export default function DirectMessagePage() {
                                             <p className={`text-sm font-bold ${isMine ? "text-green-100" : "text-gray-600"}`}>
                                                 Status: {message.offer.status.charAt(0).toUpperCase() + message.offer.status.slice(1)}
                                             </p>
+                                            {message.offer.seller_id === user.id && message.offer.status === "pending" && (
+                                                <div className="pt-1 flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOfferAction(message.offer!.id, "accepted")}
+                                                        disabled={updatingOfferId === message.offer!.id}
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md border border-green-600 text-green-700 bg-white hover:bg-green-50 disabled:opacity-60"
+                                                    >
+                                                        Accept
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOfferAction(message.offer!.id, "rejected")}
+                                                        disabled={updatingOfferId === message.offer!.id}
+                                                        className="px-3 py-1 text-xs font-semibold rounded-md border border-red-600 text-red-700 bg-white hover:bg-red-50 disabled:opacity-60"
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </div>
+                                            )}
                                             {!!message.content && <p>{message.content}</p>}
                                         </div>
                                     ) : (
