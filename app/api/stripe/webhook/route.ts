@@ -1,17 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/lib/supabase/database.types";
+
+type SubWithPeriodEnd = Stripe.Subscription & { current_period_end?: number | null };
+type InvoiceWithSubscription = Stripe.Invoice & { subscription?: string | Stripe.Subscription | null };
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
-function toIsoDate(epochSeconds?: number | null) {
-  if (!epochSeconds) return null;
-  return new Date(epochSeconds * 1000).toISOString();
+function toIsoDate(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toISOString();
+}
+
+function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  const inv = invoice as unknown as InvoiceWithSubscription;
+  const sub = inv.subscription;
+
+  if (typeof sub === "string") return sub;
+  if (sub && typeof sub === "object" && "id" in sub) {
+    return (sub as Stripe.Subscription).id;
+  }
+  return null;
+}
+
+async function getSubscription(stripeClient: Stripe, subscriptionId: string): Promise<SubWithPeriodEnd> {
+  const res = await stripeClient.subscriptions.retrieve(subscriptionId);
+  return res as unknown as SubWithPeriodEnd;
 }
 
 async function upsertEntitlement({
@@ -23,7 +41,7 @@ async function upsertEntitlement({
   status,
   currentPeriodEnd,
 }: {
-  adminClient: ReturnType<typeof createClient>;
+  adminClient: SupabaseClient<Database>;
   userId: string;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -46,7 +64,7 @@ async function upsertEntitlement({
   );
 }
 
-async function resolveUserIdFromCustomer(adminClient: ReturnType<typeof createClient>, customerId: string) {
+async function resolveUserIdFromCustomer(adminClient: SupabaseClient<Database>, customerId: string) {
   const { data } = await adminClient
     .from("stripe_customers")
     .select("user_id")
@@ -57,7 +75,7 @@ async function resolveUserIdFromCustomer(adminClient: ReturnType<typeof createCl
 }
 
 export async function POST(request: NextRequest) {
-  if (!stripe || !stripeWebhookSecret || !supabaseUrl || !supabaseServiceRoleKey) {
+  if (!stripe || !stripeWebhookSecret) {
     return NextResponse.json({ error: "Server is missing Stripe webhook configuration" }, { status: 500 });
   }
 
@@ -66,18 +84,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
   }
 
-  const payload = await request.text();
+  const rawBody = await request.text();
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(payload, signature, stripeWebhookSecret);
+    event = stripe.webhooks.constructEvent(rawBody, signature, stripeWebhookSecret);
   } catch {
     return NextResponse.json({ error: "Invalid Stripe signature" }, { status: 400 });
   }
 
-  const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const adminClient = createAdminClient();
 
   const { error: idempotencyError } = await adminClient.from("stripe_events").insert({
     id: event.id,
@@ -110,13 +126,17 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      let currentPeriodEnd: string | null = null;
       let status = "active";
+      let currentPeriodEnd: string | null = null;
 
       if (subscriptionId) {
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-        currentPeriodEnd = toIsoDate(subscription.current_period_end);
+        const subscription = await getSubscription(stripe, subscriptionId);
         status = subscription.status;
+        const cpe =
+          typeof subscription.current_period_end === "number"
+            ? toIsoDate(subscription.current_period_end)
+            : null;
+        currentPeriodEnd = cpe;
       }
 
       await upsertEntitlement({
@@ -132,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
 
     case "customer.subscription.updated": {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = event.data.object as unknown as SubWithPeriodEnd;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
       if (!customerId) break;
@@ -143,24 +163,25 @@ export async function POST(request: NextRequest) {
 
       if (!userId) break;
 
-      const status = subscription.status;
-      const currentPeriodEnd = toIsoDate(subscription.current_period_end);
-      const isPremium = status === "active" || status === "trialing";
+      const cpe =
+        typeof subscription.current_period_end === "number"
+          ? toIsoDate(subscription.current_period_end)
+          : null;
 
       await upsertEntitlement({
         adminClient,
         userId,
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscription.id,
-        isPremium,
-        status,
-        currentPeriodEnd,
+        isPremium: subscription.status === "active" || subscription.status === "trialing",
+        status: subscription.status,
+        currentPeriodEnd: cpe,
       });
       break;
     }
 
     case "customer.subscription.deleted": {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = event.data.object as unknown as SubWithPeriodEnd;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
       if (!customerId) break;
@@ -183,10 +204,45 @@ export async function POST(request: NextRequest) {
       break;
     }
 
+    case "invoice.paid": {
+      const invoice = event.data.object as Stripe.Invoice;
+      const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
+      const subscriptionId = getInvoiceSubscriptionId(invoice);
+
+      if (!customerId) break;
+
+      const userId = await resolveUserIdFromCustomer(adminClient, customerId);
+      if (!userId) break;
+
+      let status = "active";
+      let currentPeriodEnd: string | null = null;
+
+      if (subscriptionId) {
+        const subscription = await getSubscription(stripe, subscriptionId);
+        status = subscription.status;
+        const cpe =
+          typeof subscription.current_period_end === "number"
+            ? toIsoDate(subscription.current_period_end)
+            : null;
+        currentPeriodEnd = cpe;
+      }
+
+      await upsertEntitlement({
+        adminClient,
+        userId,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscriptionId,
+        isPremium: true,
+        status,
+        currentPeriodEnd,
+      });
+      break;
+    }
+
     case "invoice.payment_failed": {
       const invoice = event.data.object as Stripe.Invoice;
       const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
-      const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : null;
+      const subscriptionId = getInvoiceSubscriptionId(invoice);
 
       if (!customerId) break;
 
