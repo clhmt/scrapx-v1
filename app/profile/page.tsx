@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import ProfileSettingsTab from "./ProfileSettingsTab";
 
 
 interface ListingItem {
@@ -36,6 +37,12 @@ interface CurrentUserProfile {
     full_name?: string | null;
     company_name?: string | null;
     email?: string | null;
+}
+
+interface PublicProfileNames {
+    first_name: string;
+    last_name: string;
+    company_name: string;
 }
 
 const formatPrice = (price: number) => {
@@ -179,6 +186,10 @@ export default function ProfilePage() {
     const fetchData = async () => {
         if (!user?.id) return;
 
+        if (activeTab === 'settings') {
+            return;
+        }
+
         setLoading(true);
         if (activeTab === 'listings') {
             const { data } = await supabase.from("listings").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
@@ -209,6 +220,16 @@ export default function ProfilePage() {
             await fetchFollowers();
         }
         setLoading(false);
+    };
+
+    const handleProfileUpdated = ({ first_name, last_name, company_name }: PublicProfileNames) => {
+        const fullName = [first_name, last_name].filter(Boolean).join(" ").trim();
+
+        setCurrentUserProfile((prev) => ({
+            full_name: fullName || prev?.full_name || null,
+            company_name: company_name || prev?.company_name || null,
+            email: prev?.email || user?.email || null,
+        }));
     };
 
     const handleDelete = async (id: string, table: string) => {
@@ -282,6 +303,7 @@ export default function ProfilePage() {
                     <button onClick={() => setActiveTab('listings')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'listings' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>My Listings</button>
                     <button onClick={() => setActiveTab('wanted')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'wanted' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>My Wanted Requests</button>
                     <button onClick={() => setActiveTab('saved')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'saved' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>Saved Offers</button>
+                    <button onClick={() => setActiveTab('settings')} className={`pb-3 font-bold text-sm transition-colors ${activeTab === 'settings' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500 hover:text-gray-800'}`}>Profile Settings</button>
                 </div>
 
                 {activeTab === 'listings' && (
@@ -364,6 +386,10 @@ export default function ProfilePage() {
                             </div>
                         )}
                     </>
+                )}
+
+                {activeTab === 'settings' && user?.id && (
+                    <ProfileSettingsTab userId={user.id} onProfileUpdated={handleProfileUpdated} />
                 )}
 
                 {/* FOLLOWING */}
