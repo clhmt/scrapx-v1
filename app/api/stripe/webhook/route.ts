@@ -16,8 +16,15 @@ function toIsoDate(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString();
 }
 
-function getInvoiceSubscriptionId(invoice: InvoiceWithSubscription): string | null {
-  return typeof invoice.subscription === "string" ? invoice.subscription : null;
+function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  const inv = invoice as unknown as InvoiceWithSubscription;
+  const sub = inv.subscription;
+
+  if (typeof sub === "string") return sub;
+  if (sub && typeof sub === "object" && "id" in sub) {
+    return (sub as Stripe.Subscription).id;
+  }
+  return null;
 }
 
 async function getSubscription(stripeClient: Stripe, subscriptionId: string): Promise<SubWithPeriodEnd> {
@@ -199,7 +206,7 @@ export async function POST(request: NextRequest) {
     }
 
     case "invoice.paid": {
-      const invoice = event.data.object as InvoiceWithSubscription;
+      const invoice = event.data.object as Stripe.Invoice;
       const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
       const subscriptionId = getInvoiceSubscriptionId(invoice);
 
@@ -234,7 +241,7 @@ export async function POST(request: NextRequest) {
     }
 
     case "invoice.payment_failed": {
-      const invoice = event.data.object as InvoiceWithSubscription;
+      const invoice = event.data.object as Stripe.Invoice;
       const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
       const subscriptionId = getInvoiceSubscriptionId(invoice);
 
