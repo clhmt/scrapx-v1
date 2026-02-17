@@ -42,16 +42,20 @@ export async function fetchViewerPremiumState(userId?: string | null) {
 
   const { data, error } = await supabase
     .from("user_entitlements")
-    .select("is_premium,premium_until")
+    .select("is_premium,status,current_period_end,premium_until")
     .eq("user_id", userId)
     .maybeSingle();
 
   if (error || !data) return false;
 
   if (!data.is_premium) return false;
-  if (!data.premium_until) return true;
+  if (data.status && data.status !== "active" && data.status !== "trialing") return false;
 
-  return new Date(data.premium_until).getTime() > Date.now();
+  const entitlementEndsAt = data.current_period_end || data.premium_until;
+
+  if (!entitlementEndsAt) return true;
+
+  return new Date(entitlementEndsAt).getTime() > Date.now();
 }
 
 export async function fetchPremiumOfferCount(listingId: string) {

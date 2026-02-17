@@ -1,9 +1,47 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import Link from "next/link";
+import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function PricingPage() {
+    const [loadingCheckout, setLoadingCheckout] = useState(false);
+    const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+    const startCheckout = async () => {
+        setLoadingCheckout(true);
+        setCheckoutError(null);
+
+        const {
+            data: { session },
+        } = await supabase.auth.getSession();
+
+        const accessToken = session?.access_token;
+
+        if (!accessToken) {
+            setCheckoutError("Please sign in before upgrading.");
+            setLoadingCheckout(false);
+            return;
+        }
+
+        const response = await fetch("/api/billing/checkout", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok || !payload.url) {
+            setCheckoutError(payload.error || "Unable to start checkout. Please try again.");
+            setLoadingCheckout(false);
+            return;
+        }
+
+        window.location.href = payload.url;
+    };
+
     return (
         <div className="min-h-screen bg-gray-50 pb-20">
             <Navbar />
@@ -41,11 +79,13 @@ export default function PricingPage() {
                         </ul>
 
                         <button
-                            onClick={() => alert("Payment Gateway Integration Coming Soon!")}
+                            onClick={startCheckout}
+                            disabled={loadingCheckout}
                             className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 shadow-lg transition"
                         >
-                            Get Premium Now
+                            {loadingCheckout ? "Redirecting..." : "Get Premium Now"}
                         </button>
+                        {checkoutError ? <p className="text-xs text-red-500 mt-3">{checkoutError}</p> : null}
                         <p className="text-xs text-gray-400 mt-4">Cancel anytime. Secure payment.</p>
                     </div>
                 </div>
