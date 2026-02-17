@@ -13,14 +13,15 @@ function toIsoDate(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString();
 }
 
+function getEventObject(event: Stripe.Event): unknown {
+  const rawEvent = event as unknown as Record<string, unknown>;
+  const rawData = rawEvent["data"] as Record<string, unknown> | undefined;
+  return rawData?.["object"];
+}
+
 async function getSubscription(stripeClient: Stripe, subscriptionId: string): Promise<Stripe.Subscription> {
   const res = await stripeClient.subscriptions.retrieve(subscriptionId);
-  const sub =
-    typeof res === "object" && res !== null && "data" in (res as object)
-      ? (res as { data: Stripe.Subscription }).data
-      : res;
-
-  return sub as Stripe.Subscription;
+  return res as unknown as Stripe.Subscription;
 }
 
 async function upsertEntitlement({
@@ -101,11 +102,10 @@ export async function POST(request: NextRequest) {
 
   switch (event.type) {
     case "checkout.session.completed": {
-      const session = event.data.object as Stripe.Checkout.Session;
+      const session = getEventObject(event) as Stripe.Checkout.Session;
       const userId = session.metadata?.user_id ?? session.client_reference_id;
       const customerId = typeof session.customer === "string" ? session.customer : null;
-      const sessionSubscription = session.subscription;
-      const subscriptionId = typeof sessionSubscription === "string" ? sessionSubscription : null;
+      const subscriptionId = typeof session.subscription === "string" ? session.subscription : null;
 
       if (!userId) break;
 
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
 
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = getEventObject(event) as Stripe.Subscription;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
       if (!customerId) break;
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
 
     case "invoice.paid":
     case "invoice.payment_failed": {
-      const invoice = event.data.object as Stripe.Invoice;
+      const invoice = getEventObject(event) as Stripe.Invoice;
       const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
       const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : null;
 
