@@ -10,6 +10,7 @@ type InboxConversation = {
     id: string;
     buyer_id: string;
     seller_id: string;
+    listing_id: string | null;
     otherUserId: string;
     otherUser: {
         full_name: string | null;
@@ -78,7 +79,7 @@ export default function MessagesInboxPage() {
         try {
             const { data: convos, error: convoError } = await supabase
                 .from("conversations")
-                .select("id,buyer_id,seller_id")
+                .select("id,buyer_id,seller_id,listing_id")
                 .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
 
             if (convoError || !convos?.length) {
@@ -192,7 +193,7 @@ export default function MessagesInboxPage() {
                             return (
                                 <Link
                                     key={conversation.id}
-                                    href={`/messages/direct/${conversation.otherUserId}`}
+                                    href={conversation.listing_id ? `/messages/${conversation.id}` : `/messages/direct/${conversation.otherUserId}`}
                                     className="block hover:bg-gray-50 transition-colors p-4"
                                 >
                                     <div className="flex justify-between items-start gap-3">
