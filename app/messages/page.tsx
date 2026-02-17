@@ -193,7 +193,7 @@ export default function MessagesInboxPage() {
                             return (
                                 <Link
                                     key={conversation.id}
-                                    href={conversation.listing_id ? `/messages/${conversation.listing_id}` : `/messages/direct/${conversation.otherUserId}`}
+                                    href={`/messages/direct/${conversation.otherUserId}?convo=${conversation.id}`}
                                     className="block hover:bg-gray-50 transition-colors p-4"
                                 >
                                     <div className="flex justify-between items-start gap-3">

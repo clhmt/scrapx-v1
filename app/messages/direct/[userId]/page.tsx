@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -24,6 +24,8 @@ function formatMessageTime(isoDate: string) {
 export default function DirectMessagePage() {
     const { user } = useAuth();
     const params = useParams();
+    const searchParams = useSearchParams();
+    const urlConvoId = searchParams?.get("convo");
     const targetUserId = useMemo(() => {
         const rawParam = params?.userId;
         if (Array.isArray(rawParam)) return rawParam[0] ?? "";
@@ -60,29 +62,33 @@ export default function DirectMessagePage() {
 
                 setTargetUser(userProfile ?? { full_name: "Unknown User", company_name: null });
 
-                const { data: conversations } = await supabase
-                    .from("conversations")
-                    .select("id,buyer_id,seller_id")
-                    .or(
-                        `and(buyer_id.eq.${user.id},seller_id.eq.${targetUserId}),and(buyer_id.eq.${targetUserId},seller_id.eq.${user.id})`
-                    )
-                    .is("listing_id", null)
-                    .limit(1);
-
-                let resolvedConversationId = conversations?.[0]?.id ?? null;
+                let resolvedConversationId = urlConvoId ?? null;
 
                 if (!resolvedConversationId) {
-                    const { data: createdConversation, error: createError } = await supabase
+                    const { data: conversations } = await supabase
                         .from("conversations")
-                        .insert([{ buyer_id: user.id, seller_id: targetUserId }])
-                        .select("id")
-                        .single();
+                        .select("id,buyer_id,seller_id")
+                        .or(
+                            `and(buyer_id.eq.${user.id},seller_id.eq.${targetUserId}),and(buyer_id.eq.${targetUserId},seller_id.eq.${user.id})`
+                        )
+                        .is("listing_id", null)
+                        .limit(1);
 
-                    if (createError || !createdConversation?.id) {
-                        throw new Error("Failed to create a direct conversation.");
+                    resolvedConversationId = conversations?.[0]?.id ?? null;
+
+                    if (!resolvedConversationId) {
+                        const { data: createdConversation, error: createError } = await supabase
+                            .from("conversations")
+                            .insert([{ buyer_id: user.id, seller_id: targetUserId }])
+                            .select("id")
+                            .single();
+
+                        if (createError || !createdConversation?.id) {
+                            throw new Error("Failed to create a direct conversation.");
+                        }
+
+                        resolvedConversationId = createdConversation.id;
                     }
-
-                    resolvedConversationId = createdConversation.id;
                 }
 
                 setConversationId(resolvedConversationId);
@@ -121,7 +127,7 @@ export default function DirectMessagePage() {
         };
 
         initDirectMessage();
-    }, [user?.id, targetUserId]);
+    }, [user?.id, targetUserId, urlConvoId]);
 
     useEffect(() => {
         if (!conversationId || !user?.id) return;
