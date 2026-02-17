@@ -91,6 +91,7 @@ export interface Message {
   senderId: string;
   receiverId: string;
   listingId: string;
+  offerId?: string | null;
   content: string;
   read: boolean;
   createdAt: Date;
