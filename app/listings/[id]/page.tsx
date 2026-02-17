@@ -101,6 +101,7 @@ export default function ListingDetail() {
     // YENİ: Takip Etme Fonksiyonu
     const handleFollowToggle = async () => {
         if (!user) return alert("Please log in to follow sellers.");
+        if (!listing) return;
         if (user.id === listing.user_id) return alert("You cannot follow yourself.");
 
         if (isFollowing) {
@@ -115,6 +116,7 @@ export default function ListingDetail() {
     // YENİ: Chat Butonu Fonksiyonu
     const handleChat = () => {
         if (!user) return router.push("/auth");
+        if (!listing) return;
         // İleride detaylı mesajlaşma ekranına yönlendirecek
         router.push(`/messages/${listing.id}`);
     };
