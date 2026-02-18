@@ -10,7 +10,7 @@ import {
   fetchPrivateContactIfAllowed,
   fetchPublicSellerProfile,
   fetchViewerPremiumState,
-  getDisplayName,
+  getSellerDisplayNameForViewer,
 } from "@/lib/sellerProfile";
 
 type ListingItem = {
@@ -74,7 +74,7 @@ export default function PublicSellerProfilePage() {
     load();
   }, [sellerId, user?.id]);
 
-  const displayName = useMemo(() => getDisplayName(profile), [profile]);
+  const displayName = useMemo(() => getSellerDisplayNameForViewer(profile, isOwner || isPremiumViewer), [isOwner, isPremiumViewer, profile]);
   const initials = displayName?.[0]?.toUpperCase() || "S";
   const memberSince = profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : "-";
 
@@ -95,7 +95,7 @@ export default function PublicSellerProfilePage() {
               </div>
               <div>
                 <h1 className="text-2xl font-black text-gray-900">{displayName}</h1>
-                <p className="text-sm text-gray-500 font-bold">{profile?.company_name || "ScrapX Member"}</p>
+                <p className="text-sm text-gray-500 font-bold">{isOwner || isPremiumViewer ? profile?.company_name || "ScrapX Member" : "ScrapX Member"}</p>
                 <p className="text-xs text-gray-400 font-bold mt-1">Member since {memberSince}</p>
               </div>
             </div>

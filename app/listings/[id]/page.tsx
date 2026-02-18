@@ -6,7 +6,12 @@ import { supabase } from "@/lib/supabaseClient";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
-import { fetchPremiumOfferCount, fetchPublicSellerProfile, getDisplayName } from "@/lib/sellerProfile";
+import {
+    fetchPremiumOfferCount,
+    fetchPublicSellerProfile,
+    fetchViewerPremiumState,
+    getSellerDisplayNameForViewer,
+} from "@/lib/sellerProfile";
 
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
@@ -51,6 +56,7 @@ export default function ListingDetail() {
     const [offerPricePerTon, setOfferPricePerTon] = useState("");
     const [submittingOffer, setSubmittingOffer] = useState(false);
     const [premiumOfferCount, setPremiumOfferCount] = useState<number | null>(null);
+    const [isPremiumViewer, setIsPremiumViewer] = useState(false);
 
     // YENİ: Hafıza State'leri
     const [isSaved, setIsSaved] = useState(false);
@@ -69,6 +75,9 @@ export default function ListingDetail() {
 
             const sellerProfile = await fetchPublicSellerProfile(listingData.user_id);
             setSeller(sellerProfile || { full_name: "ScrapX Seller", company_name: "ScrapX Member" });
+
+            const premiumState = await fetchViewerPremiumState(user?.id);
+            setIsPremiumViewer(premiumState);
 
             const offerCount = await fetchPremiumOfferCount(listingData.id);
             setPremiumOfferCount(offerCount);
@@ -227,6 +236,9 @@ export default function ListingDetail() {
     if (loading) return <div className="p-20 text-center font-bold">Loading...</div>;
     if (!listing) return <div className="p-20 text-center font-bold text-red-500">Listing not found.</div>;
 
+    const sellerDisplayName = getSellerDisplayNameForViewer(seller, isPremiumViewer);
+    const sellerCompanyName = isPremiumViewer ? seller?.company_name || "ScrapX Member" : "ScrapX Member";
+
     return (
         <div className="min-h-screen bg-gray-50 pb-20">
             <Navbar />
@@ -301,13 +313,13 @@ export default function ListingDetail() {
                         <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
                             <div className="flex items-center gap-4 mb-6">
                                 <div className="w-14 h-14 bg-gray-900 rounded-full flex items-center justify-center text-white font-black text-xl">
-                                    {getDisplayName(seller)?.[0]?.toUpperCase() || 'S'}
+                                    {sellerDisplayName?.[0]?.toUpperCase() || 'S'}
                                 </div>
                                 <div>
                                     <Link href={`/profile/${listing.user_id}`} className="font-black text-gray-900 text-lg hover:underline">
-                                        {getDisplayName(seller)}
+                                        {sellerDisplayName}
                                     </Link>
-                                    <p className="text-xs text-gray-500 font-bold mb-2 truncate max-w-[200px]">{seller?.company_name || 'ScrapX Member'}</p>
+                                    <p className="text-xs text-gray-500 font-bold mb-2 truncate max-w-[200px]">{sellerCompanyName}</p>
 
                                     {/* FOLLOW BUTONU (Hafızaya Bağlı) */}
                                     <button

@@ -105,8 +105,11 @@ export default function PricingPage() {
                             disabled={loadingCheckout || !stripePriceId}
                             className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 shadow-lg transition"
                         >
-                            {loadingCheckout ? "Redirecting..." : "Get Premium Now"}
+                            {loadingCheckout ? "Redirecting..." : "Get Premium"}
                         </button>
+                        {!stripePriceId ? (
+                            <p className="text-xs text-red-500 mt-3">Missing NEXT_PUBLIC_STRIPE_PRICE_ID for checkout.</p>
+                        ) : null}
                         {checkoutError ? <p className="text-xs text-red-500 mt-3">{checkoutError}</p> : null}
                         <p className="text-xs text-gray-400 mt-4">Cancel anytime. Secure payment.</p>
                     </div>
