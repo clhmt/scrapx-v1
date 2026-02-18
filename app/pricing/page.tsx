@@ -3,10 +3,12 @@
 import Navbar from "@/components/Navbar";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchViewerEntitlement } from "@/lib/entitlements-client";
 
 export default function PricingPage() {
     const [loadingCheckout, setLoadingCheckout] = useState(false);
     const [checkoutError, setCheckoutError] = useState<string | null>(null);
+    const [isPremiumViewer, setIsPremiumViewer] = useState(false);
     const stripePriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
     const hasWarnedMissingPriceId = useRef(false);
 
@@ -17,7 +19,22 @@ export default function PricingPage() {
         }
     }, [stripePriceId]);
 
+
+    useEffect(() => {
+        const loadEntitlement = async () => {
+            const entitlement = await fetchViewerEntitlement();
+            setIsPremiumViewer(entitlement.isPremium);
+        };
+
+        void loadEntitlement();
+    }, []);
+
     const startCheckout = async () => {
+        if (isPremiumViewer) {
+            window.location.assign("/profile?billing=manage");
+            return;
+        }
+
         setLoadingCheckout(true);
         setCheckoutError(null);
 
@@ -105,7 +122,7 @@ export default function PricingPage() {
                             disabled={loadingCheckout || !stripePriceId}
                             className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 shadow-lg transition"
                         >
-                            {loadingCheckout ? "Redirecting..." : "Get Premium"}
+                            {loadingCheckout ? "Redirecting..." : isPremiumViewer ? "Manage Billing" : "Get Premium"}
                         </button>
                         {!stripePriceId ? (
                             <p className="text-xs text-red-500 mt-3">Missing NEXT_PUBLIC_STRIPE_PRICE_ID for checkout.</p>

@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { getMaskedDisplayName } from "@/lib/privacy";
+import { fetchViewerEntitlement } from "@/lib/entitlements-client";
 
 type SellerProfile = {
   user_id?: string;
@@ -41,35 +42,13 @@ export async function fetchPrivateContactIfAllowed(userId: string) {
 export async function fetchViewerPremiumState(userId?: string | null) {
   if (!userId) return false;
 
-  const { data, error } = await supabase
-    .from("user_entitlements")
-    .select("is_premium,status,current_period_end,premium_until")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Failed to fetch viewer entitlement:", error);
-    return false;
-  }
-
-  if (!data) return false;
-
-  if (!data.is_premium) return false;
-  if (data.status && data.status !== "active" && data.status !== "trialing") return false;
-
-  const entitlementEndsAt = data.current_period_end || data.premium_until;
-
-  if (!entitlementEndsAt) return true;
-
-  return new Date(entitlementEndsAt).getTime() > Date.now();
+  const entitlement = await fetchViewerEntitlement();
+  return entitlement.userId === userId ? entitlement.isPremium : false;
 }
 
 export async function fetchCurrentViewerPremiumState() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  return fetchViewerPremiumState(user?.id);
+  const entitlement = await fetchViewerEntitlement();
+  return entitlement.isPremium;
 }
 
 export async function fetchPremiumOfferCount(listingId: string) {
