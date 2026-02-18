@@ -130,6 +130,22 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  const checkoutCustomerId = typeof checkoutSession.customer === "string" ? checkoutSession.customer : null;
+
+  if (checkoutCustomerId) {
+    const { error: customerUpsertError } = await adminClient.from("stripe_customers").upsert(
+      {
+        user_id: user.id,
+        stripe_customer_id: checkoutCustomerId,
+      },
+      { onConflict: "user_id" }
+    );
+
+    if (customerUpsertError) {
+      return NextResponse.json({ error: customerUpsertError.message }, { status: 500 });
+    }
+  }
+
   if (!checkoutSession.url) {
     return NextResponse.json({ error: "Unable to create checkout session" }, { status: 500 });
   }
