@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchViewerPremiumState } from "@/lib/sellerProfile";
+import { fetchCurrentViewerPremiumState } from "@/lib/sellerProfile";
 
 export default function Navbar() {
     const { user, loading } = useAuth();
@@ -50,8 +50,13 @@ export default function Navbar() {
     }, []);
 
     useEffect(() => {
+        if (!user?.id) {
+            setIsPremiumUser(false);
+            return;
+        }
+
         const loadPremiumState = async () => {
-            const premiumState = await fetchViewerPremiumState(user?.id);
+            const premiumState = await fetchCurrentViewerPremiumState();
             setIsPremiumUser(premiumState);
         };
 

@@ -8,43 +8,53 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripePriceId = process.env.STRIPE_PRICE_ID;
 const publicStripePriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
-export async function POST(request: NextRequest) {
-  let requestedPriceId: string | null = null;
+function getBaseSiteUrl() {
+  const nextPublicSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const siteUrl = process.env.SITE_URL;
+  const vercelUrl = process.env.VERCEL_URL;
 
-  try {
-    const body = await request.json();
-    if (body && typeof body.priceId === "string") {
-      requestedPriceId = body.priceId;
-    }
-  } catch {
-    requestedPriceId = null;
+  if (nextPublicSiteUrl) return nextPublicSiteUrl;
+  if (siteUrl) return siteUrl;
+  if (vercelUrl) {
+    return vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`;
   }
+
+  return null;
+}
+
+export async function POST(request: NextRequest) {
+  const { priceId } = await request.json().catch(() => ({} as { priceId?: string }));
 
   if (!stripeSecretKey) {
     return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
   }
 
-  const checkoutPriceId = requestedPriceId || stripePriceId || publicStripePriceId;
+  const effectivePriceId = priceId || stripePriceId || publicStripePriceId;
 
-  if (!checkoutPriceId) {
+  if (!effectivePriceId) {
     return NextResponse.json(
       { error: "Missing priceId (payload.priceId, STRIPE_PRICE_ID, NEXT_PUBLIC_STRIPE_PRICE_ID)" },
       { status: 500 }
     );
   }
 
-  if (
-    !supabaseUrl ||
-    !supabaseAnonKey ||
-    !supabaseServiceRoleKey ||
-    !stripe ||
-    !siteUrl
-  ) {
-    return NextResponse.json({ error: "Server is missing billing configuration" }, { status: 500 });
+  const baseSiteUrl = getBaseSiteUrl();
+
+  if (!baseSiteUrl) {
+    return NextResponse.json(
+      { error: "Missing site URL (NEXT_PUBLIC_SITE_URL/SITE_URL/VERCEL_URL) for success/cancel URLs" },
+      { status: 500 }
+    );
+  }
+
+  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey || !stripe) {
+    return NextResponse.json(
+      { error: "Missing Supabase billing dependencies (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY)" },
+      { status: 500 }
+    );
   }
 
   const authHeader = request.headers.get("authorization");
@@ -110,9 +120,9 @@ export async function POST(request: NextRequest) {
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: stripeCustomerId,
-    line_items: [{ price: checkoutPriceId, quantity: 1 }],
-    success_url: `${siteUrl}/billing/success`,
-    cancel_url: `${siteUrl}/billing/cancel`,
+    line_items: [{ price: effectivePriceId, quantity: 1 }],
+    success_url: `${baseSiteUrl}/billing/success`,
+    cancel_url: `${baseSiteUrl}/billing/cancel`,
     client_reference_id: user.id,
     metadata: { user_id: user.id },
     subscription_data: {

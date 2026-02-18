@@ -58,6 +58,14 @@ export async function fetchViewerPremiumState(userId?: string | null) {
   return new Date(entitlementEndsAt).getTime() > Date.now();
 }
 
+export async function fetchCurrentViewerPremiumState() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return fetchViewerPremiumState(user?.id);
+}
+
 export async function fetchPremiumOfferCount(listingId: string) {
   const { data, error } = await supabase.rpc("get_listing_offer_count_if_premium", {
     target_listing_id: listingId,
@@ -80,4 +88,16 @@ export function getDisplayName(profile: SellerProfile | null, fallbackEmail?: st
   if (fallbackEmail) return fallbackEmail.split("@")[0];
 
   return "ScrapX Seller";
+}
+
+export function getSellerDisplayNameForViewer(
+  profile: SellerProfile | null,
+  viewerIsPremium: boolean,
+  fallbackEmail?: string | null
+) {
+  if (!viewerIsPremium) {
+    return "ScrapX Seller";
+  }
+
+  return getDisplayName(profile, fallbackEmail);
 }
