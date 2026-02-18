@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { getMaskedDisplayName } from "@/lib/privacy";
+import { fetchViewerPremiumState } from "@/lib/sellerProfile";
 import { supabase } from "@/lib/supabaseClient";
 
 type InboxConversation = {
@@ -35,6 +37,7 @@ export default function MessagesInboxPage() {
     const { user } = useAuth();
     const [conversations, setConversations] = useState<InboxConversation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isPremiumViewer, setIsPremiumViewer] = useState(false);
     const [deletingConversationIds, setDeletingConversationIds] = useState<Set<string>>(new Set());
 
     const handleDeleteConversation = useCallback(async (event: MouseEvent<HTMLButtonElement>, conversationId: string) => {
@@ -87,6 +90,9 @@ export default function MessagesInboxPage() {
                 return;
             }
 
+            const premiumState = await fetchViewerPremiumState(user.id);
+            setIsPremiumViewer(premiumState);
+
             const normalized = await Promise.all(
                 convos.map(async (conversation) => {
                     const otherUserId = conversation.buyer_id === user.id ? conversation.seller_id : conversation.buyer_id;
@@ -106,7 +112,7 @@ export default function MessagesInboxPage() {
                         ...conversation,
                         otherUserId,
                         otherUser: {
-                            full_name: profile?.full_name ?? "Unknown User",
+                            full_name: getMaskedDisplayName(premiumState, profile?.full_name),
                         },
                         lastMessage: lastMessage ?? null,
                     } as InboxConversation;
@@ -199,7 +205,7 @@ export default function MessagesInboxPage() {
                                     <div className="flex justify-between items-start gap-3">
                                         <div className="min-w-0 flex-1 pr-3">
                                             <h3 className={`truncate text-lg ${isUnread ? "font-black text-black" : "font-semibold text-gray-800"}`}>
-                                                {conversation.otherUser.full_name || "Unknown User"}
+                                                {getMaskedDisplayName(isPremiumViewer, conversation.otherUser.full_name)}
                                             </h3>
                                             <p className={`mt-1 text-sm truncate ${isUnread ? "font-bold text-gray-900" : "text-gray-500"}`}>
                                                 {message.content}

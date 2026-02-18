@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
+import { getMaskedDisplayName } from "@/lib/privacy";
+import { fetchViewerPremiumState } from "@/lib/sellerProfile";
 import { supabase } from "@/lib/supabaseClient";
 
 type MessageRow = {
@@ -77,6 +79,7 @@ export default function DirectMessagePage() {
     const [newMessage, setNewMessage] = useState("");
     const [conversationId, setConversationId] = useState<string | null>(null);
     const [targetUser, setTargetUser] = useState<{ full_name: string | null; company_name: string | null } | null>(null);
+    const [isPremiumViewer, setIsPremiumViewer] = useState(false);
     const [loading, setLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState("");
     const [updatingOfferId, setUpdatingOfferId] = useState<string | null>(null);
@@ -107,6 +110,9 @@ export default function DirectMessagePage() {
             setErrorMsg("");
 
             try {
+                const premiumState = await fetchViewerPremiumState(user.id);
+                setIsPremiumViewer(premiumState);
+
                 const { data: userProfile } = await supabase
                     .from("users")
                     .select("full_name,company_name")
@@ -393,7 +399,7 @@ export default function DirectMessagePage() {
                 <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
                     <div>
                         <h2 className="font-bold text-lg">
-                            {loading ? "Connecting..." : targetUser?.full_name || "Unknown User"}
+                            {loading ? "Connecting..." : getMaskedDisplayName(isPremiumViewer, targetUser?.full_name)}
                         </h2>
                         <p className="text-sm text-gray-500">{targetUser?.company_name || "Direct Message"}</p>
                     </div>
