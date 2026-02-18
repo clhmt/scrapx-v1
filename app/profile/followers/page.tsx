@@ -5,11 +5,13 @@ import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fetchViewerPremiumState } from "@/lib/sellerProfile";
 
 export default function FollowersPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [followers, setFollowers] = useState<any[]>([]);
+    const [isPremiumViewer, setIsPremiumViewer] = useState(false);
 
     useEffect(() => {
         fetchFollowers();
@@ -18,6 +20,9 @@ export default function FollowersPage() {
     const fetchFollowers = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { router.push("/auth"); return; }
+
+        const premiumState = await fetchViewerPremiumState(user.id);
+        setIsPremiumViewer(premiumState);
 
         // Fetch followers and join with profiles table to get their details
         // assuming 'follower_id' in followers table links to 'id' in profiles
@@ -87,8 +92,8 @@ export default function FollowersPage() {
 
                                     {/* INFO */}
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="font-bold text-gray-900 truncate">{profile.full_name || "Unknown User"}</h3>
-                                        <p className="text-sm text-green-700 font-medium truncate">{profile.company_name || "No Company"}</p>
+                                        <h3 className="font-bold text-gray-900 truncate">{isPremiumViewer ? (profile.full_name || "ScrapX Seller") : "ScrapX Seller"}</h3>
+                                        <p className="text-sm text-green-700 font-medium truncate">{isPremiumViewer ? (profile.company_name || "ScrapX Member") : "ScrapX Member"}</p>
                                         <p className="text-xs text-gray-500 truncate">
                                             {profile.business_type} • {profile.city && profile.country ? `${profile.city}, ${profile.country}` : "Global"}
                                         </p>

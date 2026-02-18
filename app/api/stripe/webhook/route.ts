@@ -74,6 +74,10 @@ async function resolveUserIdFromCustomer(adminClient: SupabaseClient<Database>, 
   return data?.user_id ?? null;
 }
 
+function logMappingFailure(message: string, details: Record<string, unknown>) {
+  console.error(`[stripe-webhook] ${message}`, details);
+}
+
 export async function POST(request: NextRequest) {
   if (!stripe || !stripeWebhookSecret) {
     return NextResponse.json({ error: "Server is missing Stripe webhook configuration" }, { status: 500 });
@@ -110,20 +114,70 @@ export async function POST(request: NextRequest) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.metadata?.user_id ?? session.client_reference_id;
       const customerId = typeof session.customer === "string" ? session.customer : null;
       const subscriptionId = typeof session.subscription === "string" ? session.subscription : null;
+      const metadataUserId = session.metadata?.user_id ?? null;
+      const clientReferenceUserId = session.client_reference_id ?? null;
+      const email = session.customer_details?.email ?? null;
 
-      if (!userId) break;
+      let userIdSource = "none";
+      let userId = metadataUserId;
+
+      if (userId) {
+        userIdSource = "metadata";
+      } else if (clientReferenceUserId) {
+        userId = clientReferenceUserId;
+        userIdSource = "client_reference_id";
+      }
+
+      if (!userId && customerId) {
+        userId = await resolveUserIdFromCustomer(adminClient, customerId);
+        if (userId) {
+          userIdSource = "stripe_customers";
+        }
+      }
+
+      if (!userId && email) {
+        logMappingFailure("Unable to apply email fallback mapping in current typed schema", {
+          eventType: event.type,
+          eventId: event.id,
+          customerId,
+          email,
+          attemptedSource: "email_fallback",
+        });
+      }
+
+      if (!userId) {
+        logMappingFailure("Missing userId for checkout.session.completed", {
+          eventType: event.type,
+          eventId: event.id,
+          customerId,
+          metadataUserId,
+          clientReferenceUserId,
+          userIdSource,
+        });
+        break;
+      }
 
       if (customerId) {
-        await adminClient.from("stripe_customers").upsert(
+        const { error: stripeCustomerUpsertError } = await adminClient.from("stripe_customers").upsert(
           {
             user_id: userId,
             stripe_customer_id: customerId,
           },
           { onConflict: "user_id" }
         );
+
+        if (stripeCustomerUpsertError) {
+          logMappingFailure("Failed to upsert stripe_customers on checkout completion", {
+            eventType: event.type,
+            eventId: event.id,
+            userId,
+            customerId,
+            userIdSource,
+            error: stripeCustomerUpsertError.message,
+          });
+        }
       }
 
       let status = "active";
@@ -139,7 +193,7 @@ export async function POST(request: NextRequest) {
         currentPeriodEnd = cpe;
       }
 
-      await upsertEntitlement({
+      const { error: entitlementUpsertError } = await upsertEntitlement({
         adminClient,
         userId,
         stripeCustomerId: customerId,
@@ -148,6 +202,18 @@ export async function POST(request: NextRequest) {
         status,
         currentPeriodEnd,
       });
+
+      if (entitlementUpsertError) {
+        logMappingFailure("Failed to upsert entitlement on checkout completion", {
+          eventType: event.type,
+          eventId: event.id,
+          userId,
+          customerId,
+          subscriptionId,
+          userIdSource,
+          error: entitlementUpsertError.message,
+        });
+      }
       break;
     }
 
@@ -155,20 +221,35 @@ export async function POST(request: NextRequest) {
       const subscription = event.data.object as unknown as SubWithPeriodEnd;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
-      if (!customerId) break;
+      if (!customerId) {
+        logMappingFailure("Missing customerId on subscription.updated", {
+          eventType: event.type,
+          eventId: event.id,
+          subscriptionId: subscription.id,
+        });
+        break;
+      }
 
       const userId =
         subscription.metadata?.user_id ??
         (await resolveUserIdFromCustomer(adminClient, customerId));
 
-      if (!userId) break;
+      if (!userId) {
+        logMappingFailure("Missing userId on subscription.updated", {
+          eventType: event.type,
+          eventId: event.id,
+          customerId,
+          subscriptionId: subscription.id,
+        });
+        break;
+      }
 
       const cpe =
         typeof subscription.current_period_end === "number"
           ? toIsoDate(subscription.current_period_end)
           : null;
 
-      await upsertEntitlement({
+      const { error: entitlementUpsertError } = await upsertEntitlement({
         adminClient,
         userId,
         stripeCustomerId: customerId,
@@ -177,6 +258,17 @@ export async function POST(request: NextRequest) {
         status: subscription.status,
         currentPeriodEnd: cpe,
       });
+
+      if (entitlementUpsertError) {
+        logMappingFailure("Failed to upsert entitlement on subscription.updated", {
+          eventType: event.type,
+          eventId: event.id,
+          userId,
+          customerId,
+          subscriptionId: subscription.id,
+          error: entitlementUpsertError.message,
+        });
+      }
       break;
     }
 
@@ -184,15 +276,30 @@ export async function POST(request: NextRequest) {
       const subscription = event.data.object as unknown as SubWithPeriodEnd;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
-      if (!customerId) break;
+      if (!customerId) {
+        logMappingFailure("Missing customerId on subscription.deleted", {
+          eventType: event.type,
+          eventId: event.id,
+          subscriptionId: subscription.id,
+        });
+        break;
+      }
 
       const userId =
         subscription.metadata?.user_id ??
         (await resolveUserIdFromCustomer(adminClient, customerId));
 
-      if (!userId) break;
+      if (!userId) {
+        logMappingFailure("Missing userId on subscription.deleted", {
+          eventType: event.type,
+          eventId: event.id,
+          customerId,
+          subscriptionId: subscription.id,
+        });
+        break;
+      }
 
-      await upsertEntitlement({
+      const { error: entitlementUpsertError } = await upsertEntitlement({
         adminClient,
         userId,
         stripeCustomerId: customerId,
@@ -201,6 +308,17 @@ export async function POST(request: NextRequest) {
         status: "canceled",
         currentPeriodEnd: null,
       });
+
+      if (entitlementUpsertError) {
+        logMappingFailure("Failed to upsert entitlement on subscription.deleted", {
+          eventType: event.type,
+          eventId: event.id,
+          userId,
+          customerId,
+          subscriptionId: subscription.id,
+          error: entitlementUpsertError.message,
+        });
+      }
       break;
     }
 

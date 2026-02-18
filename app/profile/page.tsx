@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import ProfileSettingsTab from "./ProfileSettingsTab";
+import { fetchViewerPremiumState } from "@/lib/sellerProfile";
 
 
 interface ListingItem {
@@ -28,8 +29,8 @@ interface WantedItem {
 
 interface SocialUser {
     id: string;
-    full_name?: string;
-    company_name?: string;
+    full_name: string;
+    company_name: string;
     email?: string;
 }
 
@@ -69,6 +70,7 @@ export default function ProfilePage() {
 
     const [loading, setLoading] = useState(true);
     const [currentUserProfile, setCurrentUserProfile] = useState<CurrentUserProfile | null>(null);
+    const [isPremiumViewer, setIsPremiumViewer] = useState(false);
 
     const userName = currentUserProfile?.full_name?.trim() || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "User";
     const userCompany = currentUserProfile?.company_name?.trim() || "Verified Member";
@@ -80,8 +82,14 @@ export default function ProfilePage() {
             fetchCurrentUserProfile();
             fetchData();
             fetchFollowData();
+            fetchPremiumViewer();
         }
     }, [user, authLoading, activeTab]);
+
+    const fetchPremiumViewer = async () => {
+        const premiumState = await fetchViewerPremiumState(user?.id);
+        setIsPremiumViewer(premiumState);
+    };
 
     const fetchCurrentUserProfile = async () => {
         if (!user?.id) return;
@@ -118,6 +126,10 @@ export default function ProfilePage() {
     const mapUsersByIds = async (ids: string[]) => {
         if (!ids.length) return [];
 
+        if (!isPremiumViewer) {
+            return ids.map((id) => ({ id, full_name: "ScrapX Seller", company_name: "ScrapX Member" }));
+        }
+
         const { data: usersData, error } = await supabase
             .from("users")
             .select("id, full_name, company_name, email")
@@ -125,13 +137,13 @@ export default function ProfilePage() {
 
         if (error) {
             console.error("Users fetch error:", error);
-            return ids.map((id) => ({ id, full_name: "ScrapX User", company_name: "ScrapX Member" }));
+            return ids.map((id) => ({ id, full_name: "ScrapX Seller", company_name: "ScrapX Member" }));
         }
 
         const usersMap = new Map((usersData || []).map((record) => [record.id, record]));
         return ids.map((id) => {
             const profile = usersMap.get(id);
-            const displayName = profile?.full_name?.trim() || profile?.email?.split("@")[0] || "ScrapX User";
+            const displayName = profile?.full_name?.trim() || profile?.email?.split("@")[0] || "ScrapX Seller";
 
             return {
                 id,
@@ -140,6 +152,19 @@ export default function ProfilePage() {
             };
         });
     };
+
+
+    useEffect(() => {
+        if (!user?.id) return;
+
+        if (activeTab === "following") {
+            fetchFollowing();
+        }
+
+        if (activeTab === "followers") {
+            fetchFollowers();
+        }
+    }, [isPremiumViewer]);
 
     const fetchFollowers = async () => {
         if (!user?.id) return;
@@ -404,7 +429,7 @@ export default function ProfilePage() {
                                         <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
                                             {u.full_name?.[0]?.toUpperCase() || 'S'}
                                         </div>
-                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'ScrapX User'}</h3>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'ScrapX Seller'}</h3>
                                         <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'ScrapX Member'}</p>
 
                                         <Link href={`/messages/direct/${u.id}`} className="w-full block text-center bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700">Message</Link>
@@ -427,7 +452,7 @@ export default function ProfilePage() {
                                         <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
                                             {u.full_name?.[0]?.toUpperCase() || 'U'}
                                         </div>
-                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'ScrapX User'}</h3>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'ScrapX Seller'}</h3>
                                         <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'ScrapX Member'}</p>
                                         <Link href={`/messages/direct/${u.id}`} className="w-full block text-center bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700">Message</Link>
                                     </div>
