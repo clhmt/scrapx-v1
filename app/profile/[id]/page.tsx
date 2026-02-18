@@ -146,7 +146,9 @@ export default function PublicSellerProfilePage() {
                 <p className="text-sm font-bold text-gray-400 blur-[3px] select-none">Email: seller@scrapx.com</p>
                 <p className="text-sm font-bold text-gray-400 blur-[3px] select-none">Phone: +1 555 000 000</p>
               </div>
-              <p className="text-xs font-bold text-emerald-700">Upgrade to Premium to view contact details.</p>
+              <Link href="/pricing" className="text-xs font-bold text-emerald-700 hover:underline">
+                Upgrade to Premium to view contact details.
+              </Link>
             </div>
           )}
         </div>

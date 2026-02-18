@@ -7,6 +7,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripePricePremiumMonthly = process.env.STRIPE_PRICE_PREMIUM_MONTHLY;
+const publicStripePriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     !supabaseAnonKey ||
     !supabaseServiceRoleKey ||
     !stripe ||
-    !stripePricePremiumMonthly ||
+    !(stripePricePremiumMonthly || publicStripePriceId) ||
     !siteUrl
   ) {
     return NextResponse.json({ error: "Server is missing billing configuration" }, { status: 500 });
@@ -48,6 +49,23 @@ export async function POST(request: NextRequest) {
 
   if (!user.email_confirmed_at) {
     return NextResponse.json({ error: "Please verify your email before upgrading." }, { status: 403 });
+  }
+
+  let requestedPriceId: string | null = null;
+
+  try {
+    const body = await request.json();
+    if (body && typeof body.priceId === "string") {
+      requestedPriceId = body.priceId;
+    }
+  } catch {
+    requestedPriceId = null;
+  }
+
+  const checkoutPriceId = requestedPriceId || stripePricePremiumMonthly || publicStripePriceId;
+
+  if (!checkoutPriceId) {
+    return NextResponse.json({ error: "Server is missing billing configuration" }, { status: 500 });
   }
 
   const { data: existingCustomer, error: customerQueryError } = await adminClient
@@ -86,7 +104,7 @@ export async function POST(request: NextRequest) {
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: stripeCustomerId,
-    line_items: [{ price: stripePricePremiumMonthly, quantity: 1 }],
+    line_items: [{ price: checkoutPriceId, quantity: 1 }],
     success_url: `${siteUrl}/billing/success`,
     cancel_url: `${siteUrl}/billing/cancel`,
     client_reference_id: user.id,

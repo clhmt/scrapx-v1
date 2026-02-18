@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 export default function PricingPage() {
     const [loadingCheckout, setLoadingCheckout] = useState(false);
     const [checkoutError, setCheckoutError] = useState<string | null>(null);
+    const stripePriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
 
     const startCheckout = async () => {
         setLoadingCheckout(true);
@@ -24,11 +25,19 @@ export default function PricingPage() {
             return;
         }
 
+        if (!stripePriceId) {
+            setCheckoutError("Billing is temporarily unavailable. Please try again later.");
+            setLoadingCheckout(false);
+            return;
+        }
+
         const response = await fetch("/api/billing/checkout", {
             method: "POST",
             headers: {
+                "Content-Type": "application/json",
                 Authorization: `Bearer ${accessToken}`,
             },
+            body: JSON.stringify({ priceId: stripePriceId }),
         });
 
         const payload = await response.json().catch(() => ({}));
@@ -39,7 +48,7 @@ export default function PricingPage() {
             return;
         }
 
-        window.location.href = payload.url;
+        window.location.assign(payload.url);
     };
 
     return (
@@ -71,7 +80,7 @@ export default function PricingPage() {
                                 <span className="text-green-500 text-xl">✓</span> See Who Follows You
                             </li>
                             <li className="flex items-center gap-3">
-                                <span className="text-green-500 text-xl">✓</span> Premium "Verified" Badge
+                                <span className="text-green-500 text-xl">✓</span> Premium &quot;Verified&quot; Badge
                             </li>
                             <li className="flex items-center gap-3">
                                 <span className="text-green-500 text-xl">✓</span> Priority Support
@@ -80,7 +89,7 @@ export default function PricingPage() {
 
                         <button
                             onClick={startCheckout}
-                            disabled={loadingCheckout}
+                            disabled={loadingCheckout || !stripePriceId}
                             className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 shadow-lg transition"
                         >
                             {loadingCheckout ? "Redirecting..." : "Get Premium Now"}

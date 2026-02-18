@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter, useSearchParams } from "next/navigation";
+import { fetchViewerPremiumState } from "@/lib/sellerProfile";
 
 export default function Navbar() {
     const { user, loading } = useAuth();
@@ -15,6 +16,7 @@ export default function Navbar() {
     const [searchValue, setSearchValue] = useState(searchParams.get("search") || "");
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [isPremiumUser, setIsPremiumUser] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Arama kutusu her değiştiğinde URL'yi güncelle
@@ -46,6 +48,15 @@ export default function Navbar() {
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        const loadPremiumState = async () => {
+            const premiumState = await fetchViewerPremiumState(user?.id);
+            setIsPremiumUser(premiumState);
+        };
+
+        loadPremiumState();
+    }, [user?.id]);
 
     useEffect(() => {
         if (!user?.id) return;
@@ -125,6 +136,9 @@ export default function Navbar() {
 
                 {/* Diğer Navigasyon Linkleri ve Profil Bölümü (Aynı Kalıyor) */}
                 <div className="flex items-center space-x-6">
+                    <Link href="/pricing" className="bg-gray-900 text-white px-5 py-2 rounded-full font-bold hover:bg-green-600 transition text-sm">
+                        {isPremiumUser ? "Manage Billing" : "Upgrade to Premium"}
+                    </Link>
                     <Link href="/listings/create" className="flex flex-col items-center group text-gray-500 hover:text-green-600">
                         <div className="bg-gray-100 p-2 rounded-full group-hover:bg-green-50"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
                         <span className="text-[10px] font-bold mt-1 uppercase">Sell</span>
