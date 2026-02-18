@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchViewerEntitlement } from "@/lib/entitlements-client";
 
 export default function BillingSuccessPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function BillingSuccessPage() {
       } = await supabase.auth.getUser();
 
       if (user?.id) {
+        await fetchViewerEntitlement();
         router.refresh();
       }
     };
