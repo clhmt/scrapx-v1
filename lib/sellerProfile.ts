@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import { getMaskedDisplayName } from "@/lib/privacy";
 
 type SellerProfile = {
   user_id?: string;
@@ -46,7 +47,12 @@ export async function fetchViewerPremiumState(userId?: string | null) {
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (error || !data) return false;
+  if (error) {
+    console.error("Failed to fetch viewer entitlement:", error);
+    return false;
+  }
+
+  if (!data) return false;
 
   if (!data.is_premium) return false;
   if (data.status && data.status !== "active" && data.status !== "trialing") return false;
@@ -95,9 +101,5 @@ export function getSellerDisplayNameForViewer(
   viewerIsPremium: boolean,
   fallbackEmail?: string | null
 ) {
-  if (!viewerIsPremium) {
-    return "ScrapX Seller";
-  }
-
-  return getDisplayName(profile, fallbackEmail);
+  return getMaskedDisplayName(viewerIsPremium, getDisplayName(profile, fallbackEmail));
 }

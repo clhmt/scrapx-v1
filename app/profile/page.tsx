@@ -55,6 +55,7 @@ export default function ProfilePage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
+    const billingStatus = searchParams.get("billing");
 
     const initialTab = searchParams.get('view') || 'listings';
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -90,6 +91,19 @@ export default function ProfilePage() {
         const premiumState = await fetchViewerPremiumState(user?.id);
         setIsPremiumViewer(premiumState);
     };
+
+    useEffect(() => {
+        if (!user?.id || billingStatus !== "success") return;
+
+        router.refresh();
+        void fetchPremiumViewer();
+
+        const retryTimer = window.setTimeout(() => {
+            void fetchPremiumViewer();
+        }, 1500);
+
+        return () => window.clearTimeout(retryTimer);
+    }, [billingStatus, router, user?.id]);
 
     const fetchCurrentUserProfile = async () => {
         if (!user?.id) return;
