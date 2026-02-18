@@ -1,13 +1,21 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function PricingPage() {
     const [loadingCheckout, setLoadingCheckout] = useState(false);
     const [checkoutError, setCheckoutError] = useState<string | null>(null);
     const stripePriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
+    const hasWarnedMissingPriceId = useRef(false);
+
+    useEffect(() => {
+        if (!stripePriceId && !hasWarnedMissingPriceId.current) {
+            console.warn("Missing NEXT_PUBLIC_STRIPE_PRICE_ID on /pricing checkout.");
+            hasWarnedMissingPriceId.current = true;
+        }
+    }, [stripePriceId]);
 
     const startCheckout = async () => {
         setLoadingCheckout(true);
@@ -40,10 +48,15 @@ export default function PricingPage() {
             body: JSON.stringify({ priceId: stripePriceId }),
         });
 
-        const payload = await response.json().catch(() => ({}));
+        const contentType = response.headers.get("content-type") || "";
+        const isJson = contentType.includes("application/json");
+        const payload = isJson ? await response.json().catch(() => null) : null;
+        const plainText = isJson ? "" : await response.text().catch(() => "");
 
-        if (!response.ok || !payload.url) {
-            setCheckoutError(payload.error || "Unable to start checkout. Please try again.");
+        if (!response.ok || !payload?.url) {
+            setCheckoutError(
+                payload?.error || plainText || "Unable to start checkout. Please try again."
+            );
             setLoadingCheckout(false);
             return;
         }
