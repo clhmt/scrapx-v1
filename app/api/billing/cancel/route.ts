@@ -26,7 +26,7 @@ export async function POST() {
     const rawUpdated = await stripe.subscriptions.update(subscription.id, {
       cancel_at_period_end: true,
     });
-    const updated: Stripe.Subscription = rawUpdated as unknown as Stripe.Subscription;
+    const updated = rawUpdated as unknown as Stripe.Subscription;
 
     if (!updated || typeof updated !== "object") {
       return NextResponse.json({ error: "Stripe subscription update failed" }, { status: 500, headers: { "Cache-Control": "no-store" } });
