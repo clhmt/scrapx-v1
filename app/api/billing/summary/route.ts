@@ -77,6 +77,22 @@ export async function GET() {
 
     const sub = subscription as unknown as StripeSubscriptionLike;
 
+    const invoiceSummaries: BillingInvoiceSummary[] = (invoices?.data ?? [])
+      .filter((inv) => typeof inv?.id === "string" && inv.id.length > 0)
+      .map((inv) => ({
+        id: inv.id,
+        status: inv.status ?? null,
+        amount_paid: inv.amount_paid ?? 0,
+        amount_due: inv.amount_due ?? 0,
+        currency: inv.currency ?? null,
+        hosted_invoice_url: inv.hosted_invoice_url ?? null,
+        invoice_pdf: inv.invoice_pdf ?? null,
+        created: inv.created ?? 0,
+        period_start: inv.period_start ?? null,
+        period_end: inv.period_end ?? null,
+        number: inv.number ?? null,
+      }));
+
     const payload: BillingSummaryResponse = {
       isPremium: context.isPremium,
       customerId: context.stripeCustomerId,
@@ -91,16 +107,7 @@ export async function GET() {
           }
         : null,
       paymentMethod: toPaymentMethodSummary(paymentMethod),
-      invoices: invoices.data.map<BillingInvoiceSummary>((invoice) => ({
-        id: invoice.id,
-        status: invoice.status,
-        amount_paid: invoice.amount_paid,
-        amount_due: invoice.amount_due,
-        created: invoice.created,
-        hosted_invoice_url: invoice.hosted_invoice_url,
-        invoice_pdf: invoice.invoice_pdf,
-        number: invoice.number,
-      })),
+      invoices: invoiceSummaries,
     };
 
     return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
