@@ -11,6 +11,7 @@ import {
     fetchViewerPremiumState,
 } from "@/lib/sellerProfile";
 import { getSellerDisplayLines } from "@/lib/sellerDisplay";
+import { requirePremiumClient } from "@/lib/premiumGateClient";
 
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
@@ -169,7 +170,11 @@ export default function ListingDetail() {
     const handleChat = () => {
         if (!user) return router.push("/auth");
         if (!listing) return;
-        // İleride detaylı mesajlaşma ekranına yönlendirecek
+        if (!isPremiumViewer) {
+            void requirePremiumClient(`/messages/${listing.id}`);
+            return;
+        }
+
         router.push(`/messages/${listing.id}`);
     };
 
@@ -183,6 +188,11 @@ export default function ListingDetail() {
 
         if (!listing?.id || !listing?.user_id) {
             alert("Listing data is unavailable. Please refresh and try again.");
+            return;
+        }
+
+        if (!isPremiumViewer) {
+            await requirePremiumClient(`/listings/${listing.id}`);
             return;
         }
 
@@ -207,62 +217,34 @@ export default function ListingDetail() {
         setSubmittingOffer(true);
 
         try {
-            const { data: offer, error: offerError } = await supabase
-                .from("offers")
-                .insert([
-                    {
-                        listing_id: listing.id,
-                        buyer_id: user.id,
-                        tonnage,
-                        price_per_ton: pricePerTon,
-                        currency: "USD",
-                    },
-                ])
-                .select("id")
-                .single();
+            const response = await fetch("/api/offers", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    listingId: listing.id,
+                    tonnage,
+                    pricePerTon,
+                    currency: "USD",
+                }),
+            });
 
-            if (offerError || !offer?.id) {
+            if (response.status === 403) {
+                await requirePremiumClient(`/listings/${listing.id}`);
+                return;
+            }
+
+            if (!response.ok) {
                 alert("Failed to create the offer. Please try again.");
                 return;
             }
 
-            let convId: string | null = null;
-            const { data: existingConv } = await supabase
-                .from("conversations")
-                .select("id")
-                .eq("listing_id", listing.id)
-                .eq("buyer_id", user.id)
-                .maybeSingle();
+            const payload = (await response.json()) as { conversationId?: string };
 
-            convId = existingConv?.id ?? null;
-
-            if (!convId) {
-                const { data: createdConversation, error: createConversationError } = await supabase
-                    .from("conversations")
-                    .insert([{ listing_id: listing.id, buyer_id: user.id, seller_id: listing.user_id }])
-                    .select("id")
-                    .single();
-
-                if (createConversationError || !createdConversation?.id) {
-                    alert("Offer was created but conversation setup failed.");
-                    return;
-                }
-
-                convId = createdConversation.id;
-            }
-
-            const { error: messageError } = await supabase.from("messages").insert([
-                {
-                    conversation_id: convId,
-                    sender_id: user.id,
-                    content: "Offer sent",
-                    is_read: false,
-                    offer_id: offer.id,
-                },
-            ]);
-
-            if (messageError) {
-                alert("Offer created but message delivery failed.");
+            if (!payload.conversationId) {
+                alert("Offer was created but conversation setup failed.");
                 return;
             }
 
@@ -270,7 +252,7 @@ export default function ListingDetail() {
             setOfferTonnage("");
             setOfferPricePerTon("");
 
-            router.push(`/messages/direct/${listing.user_id}?convo=${convId}`);
+            router.push(`/messages/direct/${listing.user_id}?convo=${payload.conversationId}`);
         } finally {
             setSubmittingOffer(false);
         }
@@ -376,6 +358,11 @@ export default function ListingDetail() {
                                 </div>
                             </div>
 
+                            {!isPremiumViewer && (
+                                <p className="mb-3 inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-amber-800">
+                                    Premium feature
+                                </p>
+                            )}
                             <button onClick={handleChat} className="w-full bg-[#52A04A] text-white py-4 rounded-xl font-black text-sm hover:bg-[#43873c] transition shadow-md flex items-center justify-center gap-2 mb-3">
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                                 Chat with Seller
@@ -386,6 +373,12 @@ export default function ListingDetail() {
                                         router.push("/auth");
                                         return;
                                     }
+
+                                    if (!isPremiumViewer) {
+                                        void requirePremiumClient(`/listings/${listing.id}`);
+                                        return;
+                                    }
+
                                     setShowOfferModal(true);
                                 }}
                                 className="w-full bg-white border-2 border-green-600 text-green-600 py-3 rounded-xl font-black text-sm hover:bg-green-50 transition mb-3"
