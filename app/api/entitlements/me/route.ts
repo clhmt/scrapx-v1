@@ -1,16 +1,23 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const supabase = await createServerSupabaseClient();
+export async function GET(request: Request) {
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
+    const cookieHeader = request.headers.get("cookie") ?? "";
+    console.warn("[entitlements/me] unauthenticated request", {
+      hasCookieHeader: cookieHeader.length > 0,
+      cookieCount: cookieHeader ? cookieHeader.split(";").length : 0,
+      hasUserError: Boolean(userError),
+    });
+
     return NextResponse.json(
       { userId: null, isPremium: false },
       {
@@ -41,9 +48,12 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ userId: user.id, isPremium: Boolean(data?.is_premium) }, {
-    headers: {
-      "Cache-Control": "no-store",
-    },
-  });
+  return NextResponse.json(
+    { userId: user.id, isPremium: Boolean(data?.is_premium) },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
+  );
 }
