@@ -186,13 +186,13 @@ export default function ListingDetail() {
             return;
         }
 
-        if (!isPremiumViewer) {
-            await requirePremiumClient(`/listings/${listing.id}`);
+        if (!listing?.id || !listing?.user_id) {
+            alert("Listing data is unavailable. Please refresh and try again.");
             return;
         }
 
-        if (!listing?.id || !listing?.user_id) {
-            alert("Listing data is unavailable. Please refresh and try again.");
+        if (!isPremiumViewer) {
+            await requirePremiumClient(`/listings/${listing.id}`);
             return;
         }
 
