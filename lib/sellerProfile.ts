@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { getMaskedDisplayName } from "@/lib/privacy";
 import { fetchViewerEntitlement } from "@/lib/entitlements-client";
 
-type SellerProfile = {
+export type SellerProfile = {
   user_id?: string;
   first_name?: string | null;
   last_name?: string | null;
@@ -62,6 +62,8 @@ export async function fetchPremiumOfferCount(listingId: string) {
 }
 
 export function getDisplayName(profile: SellerProfile | null, fallbackEmail?: string | null) {
+  if (profile?.company_name?.trim()) return profile.company_name.trim();
+
   const first = profile?.first_name?.trim();
   const last = profile?.last_name?.trim();
   const combined = [first, last].filter(Boolean).join(" ").trim();
