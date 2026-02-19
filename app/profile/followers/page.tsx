@@ -23,10 +23,16 @@ type FollowerRow = {
     created_at: string;
     follower: FollowerProfile | null;
 };
+type FollowerRow = {
+  id: string;
+  created_at: string;
+  follower: FollowerProfile | null;
+};
 
 type RawFollowerRow = Omit<FollowerRow, "follower"> & {
-    follower?: FollowerProfile | FollowerProfile[] | null;
+  follower?: FollowerProfile | FollowerProfile[] | null;
 };
+
 
 export default function FollowersPage() {
     const router = useRouter();
