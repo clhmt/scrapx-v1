@@ -119,7 +119,7 @@ export default function DirectMessagePage() {
                     .eq("id", targetUserId)
                     .maybeSingle();
 
-                setTargetUser(userProfile ?? { full_name: "Unknown User", company_name: null });
+                setTargetUser(userProfile ?? { full_name: null, company_name: null });
 
                 let resolvedConversationId = urlConvoId ?? null;
 
@@ -401,7 +401,7 @@ export default function DirectMessagePage() {
                         <h2 className="font-bold text-lg">
                             {loading ? "Connecting..." : getMaskedDisplayName(isPremiumViewer, targetUser?.full_name)}
                         </h2>
-                        <p className="text-sm text-gray-500">{targetUser?.company_name || "Direct Message"}</p>
+                        <p className="text-sm text-gray-500">{isPremiumViewer ? targetUser?.company_name || "Direct Message" : "Direct Message"}</p>
                     </div>
                     <button
                         onClick={async (e) => {
