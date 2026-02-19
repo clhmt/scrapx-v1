@@ -5,10 +5,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export async function createServerSupabaseClient(): Promise<SupabaseClient> {
+export async function createSupabaseServerClient(): Promise<SupabaseClient> {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Missing Supabase environment variables.");
   }
+
   const cookieStore = await cookies();
 
   return createServerClient(supabaseUrl, supabaseAnonKey, {
@@ -28,3 +29,6 @@ export async function createServerSupabaseClient(): Promise<SupabaseClient> {
     },
   });
 }
+
+// Backward-compatible alias during migration.
+export const createServerSupabaseClient = createSupabaseServerClient;
