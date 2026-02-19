@@ -10,7 +10,7 @@ import {
     fetchPremiumOfferCount,
     fetchViewerPremiumState,
 } from "@/lib/sellerProfile";
-import { getMaskedDisplayName } from "@/lib/privacy";
+import { getSellerDisplayLines } from "@/lib/sellerDisplay";
 
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
@@ -38,6 +38,8 @@ type ListingData = {
 type SellerData = {
     id: string;
     full_name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
     company_name?: string | null;
     avatar_url?: string | null;
 };
@@ -78,6 +80,8 @@ export default function ListingDetail() {
                 seller:profiles!listings_user_id_fkey(
                     id,
                     full_name,
+                    first_name,
+                    last_name,
                     company_name,
                     avatar_url
                 )
@@ -94,6 +98,8 @@ export default function ListingDetail() {
                 ? {
                     id: normalizedSellerRaw.id,
                     full_name: normalizedSellerRaw.full_name,
+                    first_name: normalizedSellerRaw.first_name,
+                    last_name: normalizedSellerRaw.last_name,
                     company_name: normalizedSellerRaw.company_name,
                     avatar_url: normalizedSellerRaw.avatar_url,
                 }
@@ -104,11 +110,15 @@ export default function ListingDetail() {
 
             if (!normalizedSeller) {
                 console.error("[listing] seller profile missing", { listingId: listingData.id, viewerIsPremium: premiumState });
-            } else if (!normalizedSeller.company_name && !normalizedSeller.full_name) {
+            } else if (
+                premiumState &&
+                !normalizedSeller.full_name?.trim() &&
+                !`${normalizedSeller.first_name ?? ""} ${normalizedSeller.last_name ?? ""}`.trim() &&
+                !normalizedSeller.company_name?.trim()
+            ) {
                 console.error("[listing] seller name empty", {
                     listingId: listingData.id,
-                    sellerId: normalizedSeller.id,
-                    viewerIsPremium: premiumState,
+                    sellerUserId: listingData.user_id,
                 });
             }
 
@@ -269,9 +279,7 @@ export default function ListingDetail() {
     if (loading) return <div className="p-20 text-center font-bold">Loading...</div>;
     if (!listing) return <div className="p-20 text-center font-bold text-red-500">Listing not found.</div>;
 
-    const realDisplayName = seller?.company_name ?? seller?.full_name ?? null;
-    const sellerDisplayName = getMaskedDisplayName(isPremiumViewer, realDisplayName);
-    const sellerCompanyName = isPremiumViewer ? seller?.company_name || "ScrapX Member" : "ScrapX Seller";
+    const { primary: sellerDisplayName, secondary: sellerCompanyName } = getSellerDisplayLines(isPremiumViewer, seller);
 
     return (
         <div className="min-h-screen bg-gray-50 pb-20">
