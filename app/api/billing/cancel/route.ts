@@ -1,3 +1,4 @@
+import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { getAuthenticatedBillingContext, getLatestSubscriptionForCustomer } from "@/app/api/billing/_lib/server";
@@ -25,15 +26,20 @@ export async function POST() {
     const updatedSubscription = await stripe.subscriptions.update(subscription.id, {
       cancel_at_period_end: true,
     });
+    const updated = updatedSubscription as unknown as Stripe.Subscription;
+
+    if (!updated || typeof updated !== "object") {
+      return NextResponse.json({ error: "Stripe subscription update failed" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+    }
 
     return NextResponse.json(
       {
         success: true,
         subscription: {
-          id: updatedSubscription.id,
-          status: updatedSubscription.status,
-          cancel_at_period_end: updatedSubscription.cancel_at_period_end,
-          current_period_end: updatedSubscription.current_period_end,
+          id: updated.id,
+          status: updated.status,
+          cancel_at_period_end: updated.cancel_at_period_end,
+          current_period_end: updated.current_period_end,
         },
       },
       { headers: { "Cache-Control": "no-store" } }
