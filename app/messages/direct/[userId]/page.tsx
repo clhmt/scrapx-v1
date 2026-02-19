@@ -349,28 +349,41 @@ export default function DirectMessagePage() {
 
         setMessages((prev) => [...prev, optimisticMessage]);
 
-        const { data: inserted, error } = await supabase
-            .from("messages")
-            .insert([
-                {
-                    conversation_id: conversationId,
-                    sender_id: user.id,
-                    content,
-                    is_read: false,
-                },
-            ])
-            .select(messageSelect)
-            .single();
+        const response = await fetch("/api/messages", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                conversationId,
+                content,
+            }),
+        });
 
-        if (error || !inserted) {
-            console.error("Failed to send message:", error);
+        if (!response.ok) {
+            if (response.status === 403) {
+                window.location.assign(`/pricing?next=${encodeURIComponent(`/messages/direct/${targetUserId}`)}`);
+                return;
+            }
+
             setMessages((prev) => prev.filter((row) => row.id !== tempId));
             setNewMessage(content);
             return;
         }
 
-        const normalizedInserted = normalizeMessageRow(inserted as MessageQueryRow);
-        setMessages((prev) => prev.map((row) => (row.id === tempId ? normalizedInserted : row)));
+        const payload = (await response.json()) as { id?: string };
+
+        if (!payload.id) {
+            setMessages((prev) => prev.filter((row) => row.id !== tempId));
+            return;
+        }
+
+        const inserted = await fetchMessageById(payload.id);
+
+        if (inserted) {
+            setMessages((prev) => prev.map((row) => (row.id === tempId ? inserted : row)));
+        }
     };
 
     if (!user) {

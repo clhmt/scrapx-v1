@@ -126,10 +126,25 @@ export default function ChatPage() {
         setMessages((prev) => [...prev, { ...msgToSend, created_at: new Date().toISOString() }]);
         setNewMessage("");
 
-        // Veritabanına kaydet
-        const { error: msgError } = await supabase.from("messages").insert(msgToSend);
-        if (msgError) {
-            alert("Mesaj gönderilirken veritabanı hatası: " + msgError.message);
+        const response = await fetch("/api/messages", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                conversationId,
+                content: safeContent,
+            }),
+        });
+
+        if (!response.ok) {
+            if (response.status === 403) {
+                window.location.assign(`/pricing?next=${encodeURIComponent(`/messages/${listingId}`)}`);
+                return;
+            }
+
+            alert("Mesaj gönderilemedi. Lütfen tekrar deneyin.");
         }
     };
 
