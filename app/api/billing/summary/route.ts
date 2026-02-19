@@ -6,6 +6,15 @@ import type { BillingInvoiceSummary, BillingPaymentMethodSummary, BillingSummary
 
 export const dynamic = "force-dynamic";
 
+type StripeSubscriptionLike = {
+  id: string;
+  status?: string | null;
+  cancel_at_period_end?: boolean | null;
+  current_period_start?: number | null;
+  current_period_end?: number | null;
+  created?: number | null;
+};
+
 function toPaymentMethodSummary(paymentMethod: Stripe.PaymentMethod | null): BillingPaymentMethodSummary | null {
   if (!paymentMethod || paymentMethod.type !== "card") {
     return null;
@@ -66,17 +75,19 @@ export async function GET() {
       limit: 20,
     });
 
+    const sub = subscription as unknown as StripeSubscriptionLike;
+
     const payload: BillingSummaryResponse = {
       isPremium: context.isPremium,
       customerId: context.stripeCustomerId,
       subscription: subscription
         ? {
-            id: subscription.id,
-            status: subscription.status,
-            cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
-            current_period_start: subscription.current_period_start ?? null,
-            current_period_end: subscription.current_period_end ?? null,
-            created: subscription.created,
+            id: sub.id,
+            status: sub.status as string,
+            cancel_at_period_end: Boolean(sub.cancel_at_period_end),
+            current_period_start: sub.current_period_start ?? null,
+            current_period_end: sub.current_period_end ?? null,
+            created: sub.created as number,
           }
         : null,
       paymentMethod: toPaymentMethodSummary(paymentMethod),

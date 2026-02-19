@@ -5,6 +5,15 @@ import { getAuthenticatedBillingContext, getLatestSubscriptionForCustomer } from
 
 export const dynamic = "force-dynamic";
 
+type StripeSubscriptionLike = {
+  id: string;
+  status?: string | null;
+  cancel_at_period_end?: boolean | null;
+  current_period_start?: number | null;
+  current_period_end?: number | null;
+  created?: number | null;
+};
+
 export async function POST() {
   try {
     const context = await getAuthenticatedBillingContext();
@@ -27,6 +36,7 @@ export async function POST() {
       cancel_at_period_end: true,
     });
     const updated = rawUpdated as unknown as Stripe.Subscription;
+    const sub = updated as unknown as StripeSubscriptionLike;
 
     if (!updated || typeof updated !== "object") {
       return NextResponse.json({ error: "Stripe subscription update failed" }, { status: 500, headers: { "Cache-Control": "no-store" } });
@@ -37,9 +47,9 @@ export async function POST() {
         success: true,
         subscription: {
           id: updated.id,
-          status: updated.status,
-          cancel_at_period_end: updated.cancel_at_period_end,
-          current_period_end: (updated as unknown as { current_period_end?: number }).current_period_end,
+          status: sub.status,
+          cancel_at_period_end: sub.cancel_at_period_end,
+          current_period_end: sub.current_period_end,
         },
       },
       { headers: { "Cache-Control": "no-store" } }
