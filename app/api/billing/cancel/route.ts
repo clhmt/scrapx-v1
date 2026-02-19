@@ -23,10 +23,10 @@ export async function POST() {
       return NextResponse.json({ error: "No active subscription found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
 
-    const updatedSubscription = await stripe.subscriptions.update(subscription.id, {
+    const rawUpdated = await stripe.subscriptions.update(subscription.id, {
       cancel_at_period_end: true,
     });
-    const updated = updatedSubscription as unknown as Stripe.Subscription;
+    const updated: Stripe.Subscription = rawUpdated as unknown as Stripe.Subscription;
 
     if (!updated || typeof updated !== "object") {
       return NextResponse.json({ error: "Stripe subscription update failed" }, { status: 500, headers: { "Cache-Control": "no-store" } });
