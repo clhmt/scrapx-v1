@@ -39,7 +39,7 @@ export async function POST() {
           id: updated.id,
           status: updated.status,
           cancel_at_period_end: updated.cancel_at_period_end,
-          current_period_end: updated.current_period_end,
+          current_period_end: (updated as unknown as { current_period_end?: number }).current_period_end,
         },
       },
       { headers: { "Cache-Control": "no-store" } }
