@@ -8,10 +8,9 @@ import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import {
     fetchPremiumOfferCount,
-    fetchPublicSellerProfile,
     fetchViewerPremiumState,
-    getSellerDisplayNameForViewer,
 } from "@/lib/sellerProfile";
+import { getMaskedDisplayName } from "@/lib/privacy";
 
 const formatPrice = (price: number) => {
     if (!price) return "0 USD";
@@ -37,10 +36,10 @@ type ListingData = {
 };
 
 type SellerData = {
+    id: string;
     full_name?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
     company_name?: string | null;
+    avatar_url?: string | null;
 };
 
 export default function ListingDetail() {
@@ -68,16 +67,50 @@ export default function ListingDetail() {
 
     const fetchData = async () => {
         setLoading(true);
+        const premiumState = await fetchViewerPremiumState(user?.id);
+        setIsPremiumViewer(premiumState);
+
         // İlanı Çek
-        const { data: listingData } = await supabase.from("listings").select("*").eq("id", id).single();
+        const { data: listingData } = await supabase
+            .from("listings")
+            .select(`
+                *,
+                seller:profiles!listings_user_id_fkey(
+                    id,
+                    full_name,
+                    company_name,
+                    avatar_url
+                )
+            `)
+            .eq("id", id)
+            .single();
+
         if (listingData) {
-            setListing(listingData);
+            const normalizedSellerRaw = Array.isArray(listingData.seller)
+                ? listingData.seller[0] ?? null
+                : listingData.seller ?? null;
 
-            const sellerProfile = await fetchPublicSellerProfile(listingData.user_id);
-            setSeller(sellerProfile);
+            const normalizedSeller: SellerData | null = normalizedSellerRaw
+                ? {
+                    id: normalizedSellerRaw.id,
+                    full_name: normalizedSellerRaw.full_name,
+                    company_name: normalizedSellerRaw.company_name,
+                    avatar_url: normalizedSellerRaw.avatar_url,
+                }
+                : null;
 
-            const premiumState = await fetchViewerPremiumState(user?.id);
-            setIsPremiumViewer(premiumState);
+            setListing(listingData as ListingData);
+            setSeller(normalizedSeller);
+
+            if (!normalizedSeller) {
+                console.error("[listing] seller profile missing", { listingId: listingData.id, viewerIsPremium: premiumState });
+            } else if (!normalizedSeller.company_name && !normalizedSeller.full_name) {
+                console.error("[listing] seller name empty", {
+                    listingId: listingData.id,
+                    sellerId: normalizedSeller.id,
+                    viewerIsPremium: premiumState,
+                });
+            }
 
             const offerCount = await fetchPremiumOfferCount(listingData.id);
             setPremiumOfferCount(offerCount);
@@ -236,8 +269,9 @@ export default function ListingDetail() {
     if (loading) return <div className="p-20 text-center font-bold">Loading...</div>;
     if (!listing) return <div className="p-20 text-center font-bold text-red-500">Listing not found.</div>;
 
-    const sellerDisplayName = getSellerDisplayNameForViewer(seller, isPremiumViewer);
-    const sellerCompanyName = isPremiumViewer ? seller?.company_name || "ScrapX Member" : "ScrapX Member";
+    const realDisplayName = seller?.company_name ?? seller?.full_name ?? null;
+    const sellerDisplayName = getMaskedDisplayName(isPremiumViewer, realDisplayName);
+    const sellerCompanyName = isPremiumViewer ? seller?.company_name || "ScrapX Member" : "ScrapX Seller";
 
     return (
         <div className="min-h-screen bg-gray-50 pb-20">
