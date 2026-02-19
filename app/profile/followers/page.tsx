@@ -6,11 +6,32 @@ import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchViewerPremiumState } from "@/lib/sellerProfile";
+import { getMaskedDisplayName } from "@/lib/privacy";
+
+type FollowerProfile = {
+    id: string;
+    full_name: string | null;
+    company_name: string | null;
+    avatar_url: string | null;
+    business_type: string | null;
+    country: string | null;
+    city: string | null;
+};
+
+type FollowerRow = {
+    id: string;
+    created_at: string;
+    follower: FollowerProfile | null;
+};
+
+type RawFollowerRow = Omit<FollowerRow, "follower"> & {
+    follower?: FollowerProfile | FollowerProfile[] | null;
+};
 
 export default function FollowersPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
-    const [followers, setFollowers] = useState<any[]>([]);
+    const [followers, setFollowers] = useState<FollowerRow[]>([]);
     const [isPremiumViewer, setIsPremiumViewer] = useState(false);
 
     useEffect(() => {
@@ -46,7 +67,12 @@ export default function FollowersPage() {
         if (error) {
             console.error("Error fetching followers:", error);
         } else {
-            setFollowers(data || []);
+            const normalized: FollowerRow[] = (data ?? []).map((row: RawFollowerRow) => ({
+                ...row,
+                follower: Array.isArray(row.follower) ? (row.follower[0] ?? null) : (row.follower ?? null),
+            }));
+
+            setFollowers(normalized);
         }
         setLoading(false);
     };
@@ -79,6 +105,8 @@ export default function FollowersPage() {
                             const profile = item.follower; // Access the joined profile data
                             if (!profile) return null;
 
+                            const displayName = getMaskedDisplayName(isPremiumViewer, profile.full_name);
+
                             return (
                                 <div key={item.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4 hover:shadow-md transition">
                                     {/* AVATAR */}
@@ -92,7 +120,7 @@ export default function FollowersPage() {
 
                                     {/* INFO */}
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="font-bold text-gray-900 truncate">{isPremiumViewer ? (profile.full_name || "ScrapX Seller") : "ScrapX Seller"}</h3>
+                                        <h3 className="font-bold text-gray-900 truncate">{displayName}</h3>
                                         <p className="text-sm text-green-700 font-medium truncate">{isPremiumViewer ? (profile.company_name || "ScrapX Member") : "ScrapX Member"}</p>
                                         <p className="text-xs text-gray-500 truncate">
                                             {profile.business_type} • {profile.city && profile.country ? `${profile.city}, ${profile.country}` : "Global"}

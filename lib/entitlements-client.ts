@@ -3,6 +3,8 @@ export type ViewerEntitlementResponse = {
   isPremium: boolean;
 };
 
+let hasWarnedUnauthorized = false;
+
 export async function fetchViewerEntitlement(): Promise<ViewerEntitlementResponse> {
   const response = await fetch("/api/entitlements/me", {
     method: "GET",
@@ -12,6 +14,15 @@ export async function fetchViewerEntitlement(): Promise<ViewerEntitlementRespons
     },
     credentials: "include",
   });
+
+  if (response.status === 401) {
+    if (!hasWarnedUnauthorized) {
+      console.warn("Viewer entitlement request returned 401; treating viewer as free tier.");
+      hasWarnedUnauthorized = true;
+    }
+
+    return { userId: null, isPremium: false };
+  }
 
   if (!response.ok) {
     return { userId: null, isPremium: false };

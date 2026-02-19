@@ -74,7 +74,7 @@ export default function ListingDetail() {
             setListing(listingData);
 
             const sellerProfile = await fetchPublicSellerProfile(listingData.user_id);
-            setSeller(sellerProfile || { full_name: "ScrapX Seller", company_name: "ScrapX Member" });
+            setSeller(sellerProfile);
 
             const premiumState = await fetchViewerPremiumState(user?.id);
             setIsPremiumViewer(premiumState);

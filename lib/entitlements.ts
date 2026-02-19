@@ -30,6 +30,7 @@ export async function getViewerEntitlement(): Promise<ViewerEntitlement> {
       .from("user_entitlements")
       .select("is_premium")
       .eq("user_id", user.id)
+      .limit(1)
       .maybeSingle<{ is_premium: boolean }>();
 
     if (error) {

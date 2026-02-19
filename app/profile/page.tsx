@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import ProfileSettingsTab from "./ProfileSettingsTab";
 import { fetchViewerPremiumState } from "@/lib/sellerProfile";
+import { getMaskedDisplayName } from "@/lib/privacy";
 
 
 interface ListingItem {
@@ -157,7 +158,8 @@ export default function ProfilePage() {
         const usersMap = new Map((usersData || []).map((record) => [record.id, record]));
         return ids.map((id) => {
             const profile = usersMap.get(id);
-            const displayName = profile?.full_name?.trim() || profile?.email?.split("@")[0] || "ScrapX Seller";
+            const preferredName = profile?.full_name?.trim() || profile?.email?.split("@")[0] || null;
+            const displayName = getMaskedDisplayName(isPremiumViewer, preferredName);
 
             return {
                 id,
@@ -443,7 +445,7 @@ export default function ProfilePage() {
                                         <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
                                             {u.full_name?.[0]?.toUpperCase() || 'S'}
                                         </div>
-                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'ScrapX Seller'}</h3>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{getMaskedDisplayName(isPremiumViewer, u.full_name)}</h3>
                                         <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'ScrapX Member'}</p>
 
                                         <Link href={`/messages/direct/${u.id}`} className="w-full block text-center bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700">Message</Link>
@@ -466,7 +468,7 @@ export default function ProfilePage() {
                                         <div className="w-20 h-20 bg-gray-900 rounded-full text-white flex items-center justify-center text-2xl font-black mb-4">
                                             {u.full_name?.[0]?.toUpperCase() || 'U'}
                                         </div>
-                                        <h3 className="font-black text-xl text-gray-900 mb-1">{u.full_name || 'ScrapX Seller'}</h3>
+                                        <h3 className="font-black text-xl text-gray-900 mb-1">{getMaskedDisplayName(isPremiumViewer, u.full_name)}</h3>
                                         <p className="text-sm text-gray-500 font-bold mb-6">{u.company_name || 'ScrapX Member'}</p>
                                         <Link href={`/messages/direct/${u.id}`} className="w-full block text-center bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700">Message</Link>
                                     </div>
