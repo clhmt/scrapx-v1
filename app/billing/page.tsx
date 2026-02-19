@@ -1,0 +1,193 @@
+import Link from "next/link";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import Navbar from "@/components/Navbar";
+import BillingActions from "@/app/billing/BillingActions";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { BillingSummaryResponse } from "@/types/billing";
+
+function formatTimestamp(unixSeconds: number | null): string {
+  if (!unixSeconds) {
+    return "—";
+  }
+
+  return new Date(unixSeconds * 1000).toLocaleDateString();
+}
+
+function formatCurrency(amountCents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amountCents / 100);
+}
+
+function statusStyles(status?: string): string {
+  switch (status) {
+    case "active":
+    case "trialing":
+      return "bg-green-100 text-green-800";
+    case "past_due":
+    case "unpaid":
+      return "bg-yellow-100 text-yellow-800";
+    case "canceled":
+    case "incomplete_expired":
+      return "bg-red-100 text-red-800";
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
+}
+
+async function getBillingSummary(): Promise<BillingSummaryResponse> {
+  const headerStore = await headers();
+  const cookieStore = await cookies();
+  const protocol = headerStore.get("x-forwarded-proto") ?? "http";
+  const host = headerStore.get("host");
+
+  if (!host) {
+    throw new Error("Missing host header");
+  }
+
+  const response = await fetch(`${protocol}://${host}/api/billing/summary`, {
+    method: "GET",
+    headers: {
+      cookie: cookieStore.toString(),
+    },
+    cache: "no-store",
+  });
+
+  if (response.status === 401) {
+    redirect("/auth");
+  }
+
+  if (!response.ok) {
+    throw new Error("Failed to load billing summary");
+  }
+
+  return (await response.json()) as BillingSummaryResponse;
+}
+
+export default async function BillingPage() {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/auth");
+  }
+
+  const summary = await getBillingSummary();
+  const hasSubscription = Boolean(summary.subscription);
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-16">
+      <Navbar />
+      <main className="mx-auto max-w-5xl px-4 py-10">
+        <h1 className="text-3xl font-bold text-gray-900">Billing</h1>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <section className="rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">Plan status</h2>
+            {summary.subscription ? (
+              <div className="mt-4 space-y-3">
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase ${statusStyles(summary.subscription.status)}`}>
+                  {summary.subscription.status.replaceAll("_", " ")}
+                </span>
+                {summary.subscription.status === "past_due" ? (
+                  <p className="text-sm text-yellow-700">Your subscription payment is past due. Please update your payment method.</p>
+                ) : null}
+                {summary.subscription.cancel_at_period_end ? (
+                  <p className="text-sm text-red-700">Your subscription will cancel at the end of the current billing period.</p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-4">
+                <p className="text-sm text-gray-600">No active subscription.</p>
+                <Link href="/pricing" className="mt-3 inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
+                  View plans
+                </Link>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">Subscription dates</h2>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Start</dt>
+                <dd className="font-medium text-gray-900">{formatTimestamp(summary.subscription?.current_period_start ?? null)}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Next renewal</dt>
+                <dd className="font-medium text-gray-900">{formatTimestamp(summary.subscription?.current_period_end ?? null)}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Created</dt>
+                <dd className="font-medium text-gray-900">{formatTimestamp(summary.subscription?.created ?? null)}</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+
+        <section className="mt-4 rounded-2xl bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">Payment method</h2>
+          {summary.paymentMethod ? (
+            <p className="mt-3 text-sm text-gray-700">
+              {summary.paymentMethod.brand?.toUpperCase()} ending in {summary.paymentMethod.last4} · Expires {summary.paymentMethod.exp_month}/
+              {summary.paymentMethod.exp_year}
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-gray-500">No payment method on file.</p>
+          )}
+
+          <div className="mt-4">
+            <BillingActions hasSubscription={hasSubscription} />
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-2xl bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">Invoices</h2>
+          {summary.invoices.length ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500">
+                    <th className="py-2 pr-4">Date</th>
+                    <th className="py-2 pr-4">Amount</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2 pr-4">Invoice</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {summary.invoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <td className="py-3 pr-4 text-gray-700">{formatTimestamp(invoice.created)}</td>
+                      <td className="py-3 pr-4 text-gray-900">{formatCurrency(invoice.amount_paid || invoice.amount_due)}</td>
+                      <td className="py-3 pr-4 text-gray-700">{invoice.status ?? "unknown"}</td>
+                      <td className="py-3 pr-4">
+                        <div className="flex gap-3">
+                          {invoice.hosted_invoice_url ? (
+                            <a href={invoice.hosted_invoice_url} target="_blank" rel="noreferrer" className="text-green-700 hover:underline">
+                              View
+                            </a>
+                          ) : null}
+                          {invoice.invoice_pdf ? (
+                            <a href={invoice.invoice_pdf} target="_blank" rel="noreferrer" className="text-green-700 hover:underline">
+                              PDF
+                            </a>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-gray-500">No invoices found yet.</p>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}
