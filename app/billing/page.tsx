@@ -6,6 +6,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedBillingSummary } from "@/lib/billing/getBillingSummary";
 import type { BillingSummaryResponse } from "@/types/billing";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function formatTimestamp(unixSeconds: number | null): string {
   if (!unixSeconds) {
     return "—";
