@@ -2,6 +2,8 @@ import "server-only";
 import Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { getAuthenticatedBillingContext, getLatestSubscriptionForCustomer } from "@/app/api/billing/_lib/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveStripeCustomerForUser } from "@/lib/billing/resolveStripeCustomer";
 import type { BillingInvoiceSummary, BillingPaymentMethodSummary, BillingSummaryResponse } from "@/types/billing";
 
 type AuthenticatedBillingSummary = {
@@ -38,7 +40,39 @@ export async function getAuthenticatedBillingSummary(): Promise<AuthenticatedBil
     return null;
   }
 
-  if (!context.stripeCustomerId) {
+  let stripeCustomerId = context.stripeCustomerId;
+
+  if (!stripeCustomerId) {
+    const resolved = await resolveStripeCustomerForUser({
+      userId: context.userId,
+      email: context.email,
+    });
+
+    if (resolved.stripeCustomerId) {
+      const adminClient = createAdminClient();
+      const updatePayload: {
+        stripe_customer_id: string;
+        stripe_subscription_id?: string;
+      } = {
+        stripe_customer_id: resolved.stripeCustomerId,
+      };
+
+      if (!context.stripeSubscriptionId && resolved.stripeSubscriptionId) {
+        updatePayload.stripe_subscription_id = resolved.stripeSubscriptionId;
+      }
+
+      await adminClient
+        .from("user_entitlements")
+        .update(updatePayload)
+        .eq("user_id", context.userId)
+        .is("stripe_customer_id", null);
+
+      stripeCustomerId = resolved.stripeCustomerId;
+      console.info("[billing] backfilled stripe_customer_id", { userId: context.userId, matched: true });
+    }
+  }
+
+  if (!stripeCustomerId) {
     return {
       userId: context.userId,
       summary: {
@@ -52,8 +86,8 @@ export async function getAuthenticatedBillingSummary(): Promise<AuthenticatedBil
     };
   }
 
-  const subscription = await getLatestSubscriptionForCustomer(context.stripeCustomerId);
-  const customer = await stripe.customers.retrieve(context.stripeCustomerId);
+  const subscription = await getLatestSubscriptionForCustomer(stripeCustomerId);
+  const customer = await stripe.customers.retrieve(stripeCustomerId);
 
   let defaultPaymentMethodId: string | null = null;
 
@@ -72,7 +106,7 @@ export async function getAuthenticatedBillingSummary(): Promise<AuthenticatedBil
   const paymentMethod = defaultPaymentMethodId ? await stripe.paymentMethods.retrieve(defaultPaymentMethodId) : null;
 
   const invoices = await stripe.invoices.list({
-    customer: context.stripeCustomerId,
+    customer: stripeCustomerId,
     limit: 20,
   });
 
@@ -111,7 +145,7 @@ export async function getAuthenticatedBillingSummary(): Promise<AuthenticatedBil
     userId: context.userId,
     summary: {
       isPremium: context.isPremium,
-      customerId: context.stripeCustomerId,
+      customerId: stripeCustomerId,
       hasSubscription: Boolean(subscription),
       subscription: subscription
         ? {
