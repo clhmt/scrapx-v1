@@ -77,17 +77,35 @@ export async function GET() {
 
     const sub = subscription as unknown as StripeSubscriptionLike;
 
-    const invoiceSummaries: BillingInvoiceSummary[] = (invoices?.data ?? [])
-      .filter((inv) => typeof inv?.id === "string" && inv.id.length > 0)
+    type InvoiceLike = {
+      id?: string;
+      status?: any;
+      amount_paid?: number;
+      amount_due?: number;
+      currency?: string;
+      hosted_invoice_url?: string | null;
+      invoice_pdf?: string | null;
+      created?: number;
+      period_start?: number;
+      period_end?: number;
+      number?: string | null;
+    };
+
+    function hasStringId(inv: InvoiceLike): inv is InvoiceLike & { id: string } {
+      return typeof inv.id === "string" && inv.id.length > 0;
+    }
+
+    const invoiceSummaries: BillingInvoiceSummary[] = ((invoices?.data ?? []) as InvoiceLike[])
+      .filter(hasStringId)
       .map((inv) => ({
         id: inv.id,
-        status: inv.status ?? null,
+        status: (inv.status ?? null) as any,
         amount_paid: inv.amount_paid ?? 0,
         amount_due: inv.amount_due ?? 0,
-        currency: inv.currency ?? null,
+        currency: inv.currency ?? "usd",
         hosted_invoice_url: inv.hosted_invoice_url ?? null,
         invoice_pdf: inv.invoice_pdf ?? null,
-        created: inv.created ?? 0,
+        created: inv.created ?? null,
         period_start: inv.period_start ?? null,
         period_end: inv.period_end ?? null,
         number: inv.number ?? null,
