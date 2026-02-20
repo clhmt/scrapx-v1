@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import Stripe from "stripe";
+import StripeClient from "stripe";
+import type Stripe from "stripe";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 import {
@@ -16,7 +17,7 @@ type InvoiceWithSubscription = Stripe.Invoice & { subscription?: string | Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+const stripe = stripeSecretKey ? new StripeClient(stripeSecretKey) : null;
 
 function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
   const inv = invoice as InvoiceWithSubscription;
@@ -168,7 +169,9 @@ export async function POST(request: NextRequest) {
 
       const status = event.type === "customer.subscription.deleted" ? "canceled" : subscription.status;
       const currentPeriodEnd =
-        typeof subscription.current_period_end === "number" ? toIsoDate(subscription.current_period_end) : null;
+        typeof (subscription as any).current_period_end === "number"
+          ? toIsoDate((subscription as any).current_period_end)
+          : null;
 
       const { error } = await upsertEntitlement(adminClient, {
         userId,
