@@ -4,7 +4,9 @@ import { stripe } from "@/lib/stripe";
 
 type BillingContext = {
   userId: string;
+  email: string | null;
   stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
   isPremium: boolean;
 };
 
@@ -21,10 +23,10 @@ export async function getAuthenticatedBillingContext(): Promise<BillingContext |
 
   const { data, error } = await supabase
     .from("user_entitlements")
-    .select("stripe_customer_id, is_premium")
+    .select("stripe_customer_id, stripe_subscription_id, is_premium")
     .eq("user_id", user.id)
     .limit(1)
-    .maybeSingle<{ stripe_customer_id: string | null; is_premium: boolean }>();
+    .maybeSingle<{ stripe_customer_id: string | null; stripe_subscription_id: string | null; is_premium: boolean }>();
 
   if (error) {
     throw error;
@@ -32,7 +34,9 @@ export async function getAuthenticatedBillingContext(): Promise<BillingContext |
 
   return {
     userId: user.id,
+    email: user.email ?? null,
     stripeCustomerId: data?.stripe_customer_id ?? null,
+    stripeSubscriptionId: data?.stripe_subscription_id ?? null,
     isPremium: Boolean(data?.is_premium),
   };
 }
