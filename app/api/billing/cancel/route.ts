@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { NextResponse } from "next/server";
+import { unstable_noStore as noStore } from "next/cache";
 import { stripe } from "@/lib/stripe";
 import { getAuthenticatedBillingContext, getLatestSubscriptionForCustomer } from "@/app/api/billing/_lib/server";
 
@@ -15,6 +16,8 @@ type StripeSubscriptionLike = {
 };
 
 export async function POST() {
+  noStore();
+
   try {
     const context = await getAuthenticatedBillingContext();
 

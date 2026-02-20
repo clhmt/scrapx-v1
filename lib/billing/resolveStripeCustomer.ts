@@ -99,6 +99,14 @@ export async function resolveStripeCustomerForUser(params: {
     return emptyResolution();
   }
 
+  if (customers.data.length > 1) {
+    console.info("[billing] stripe email lookup picked best subscription", {
+      userId: params.userId,
+      customerCount: customers.data.length,
+      subscriptionCount: allSubscriptions.length,
+    });
+  }
+
   const [bestSubscription] = [...allSubscriptions].sort(compareSubscriptions);
   const stripeCustomerId = getCustomerId(bestSubscription);
 
