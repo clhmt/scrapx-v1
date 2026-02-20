@@ -78,12 +78,31 @@ export default async function BillingPage() {
 
   const summary = await getBillingSummary();
   const hasSubscription = Boolean(summary.subscription);
+  const hasActiveSubscription = summary.subscription?.status === "active" || summary.subscription?.status === "trialing";
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="text-3xl font-bold text-gray-900">Billing</h1>
+
+        {!hasActiveSubscription ? (
+          <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">No active subscription</h2>
+            <p className="mt-2 text-sm text-gray-600">You’re currently on the Free plan. Upgrade to unlock premium features.</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link href="/pricing" className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
+                Upgrade
+              </Link>
+              <Link
+                href="/profile"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-400 hover:text-gray-900"
+              >
+                Back to Profile
+              </Link>
+            </div>
+          </section>
+        ) : null}
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -102,10 +121,7 @@ export default async function BillingPage() {
               </div>
             ) : (
               <div className="mt-4">
-                <p className="text-sm text-gray-600">No active subscription.</p>
-                <Link href="/pricing" className="mt-3 inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
-                  View plans
-                </Link>
+                <p className="text-sm text-gray-600">Plan: Free (Inactive)</p>
               </div>
             )}
           </section>
