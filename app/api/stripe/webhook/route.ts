@@ -39,23 +39,6 @@ async function resolveUserIdFromCustomer(adminClient: SupabaseClient<Database>, 
   return data?.user_id ?? null;
 }
 
-async function resolveUserIdFromUniqueEmail(
-  adminClient: SupabaseClient<Database>,
-  email: string
-): Promise<string | null> {
-  const { data, error } = await adminClient.auth.admin.listUsers({ email });
-  if (error || !data?.users?.length) {
-    return null;
-  }
-
-  if (data.users.length !== 1) {
-    console.info("[webhook] no mapping", { reason: "non-unique-email" });
-    return null;
-  }
-
-  return data.users[0]?.id ?? null;
-}
-
 function logMappedUser(source: string) {
   console.info("[webhook] mapped user", { source });
 }
@@ -68,10 +51,9 @@ function logWebhookError(message: string) {
   console.error("[webhook] error", { message });
 }
 
-async function mapUserIdFromCheckoutSession(
-  adminClient: SupabaseClient<Database>,
+function mapUserIdFromCheckoutSession(
   session: Stripe.Checkout.Session
-): Promise<{ userId: string | null; source: string }> {
+): { userId: string | null; source: string } {
   const metadataUserId = session.metadata?.user_id ?? null;
   if (metadataUserId) {
     return { userId: metadataUserId, source: "metadata" };
@@ -79,20 +61,6 @@ async function mapUserIdFromCheckoutSession(
 
   if (session.client_reference_id) {
     return { userId: session.client_reference_id, source: "client_reference_id" };
-  }
-
-  if (typeof session.customer === "string") {
-    const fromCustomer = await resolveUserIdFromCustomer(adminClient, session.customer);
-    if (fromCustomer) {
-      return { userId: fromCustomer, source: "stripe_customers" };
-    }
-  }
-
-  if (session.customer_details?.email) {
-    const fromEmail = await resolveUserIdFromUniqueEmail(adminClient, session.customer_details.email);
-    if (fromEmail) {
-      return { userId: fromEmail, source: "email" };
-    }
   }
 
   return { userId: null, source: "none" };
@@ -137,10 +105,10 @@ export async function POST(request: NextRequest) {
       const session = event.data.object as Stripe.Checkout.Session;
       const customerId = typeof session.customer === "string" ? session.customer : null;
       const subscriptionId = typeof session.subscription === "string" ? session.subscription : null;
-      const mapped = await mapUserIdFromCheckoutSession(adminClient, session);
+      const mapped = mapUserIdFromCheckoutSession(session);
 
       if (!mapped.userId) {
-        logNoMapping("checkout-session");
+        console.log("[webhook] no user mapping found");
         break;
       }
 
