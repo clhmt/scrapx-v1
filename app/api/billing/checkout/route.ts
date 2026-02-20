@@ -12,10 +12,12 @@ const publicStripePriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
 function getBaseSiteUrl() {
+  const appUrl = process.env.APP_URL;
   const nextPublicSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
   const siteUrl = process.env.SITE_URL;
   const vercelUrl = process.env.VERCEL_URL;
 
+  if (appUrl) return appUrl;
   if (nextPublicSiteUrl) return nextPublicSiteUrl;
   if (siteUrl) return siteUrl;
   if (vercelUrl) {
@@ -45,7 +47,7 @@ export async function POST(request: NextRequest) {
 
   if (!baseSiteUrl) {
     return NextResponse.json(
-      { error: "Missing site URL (NEXT_PUBLIC_SITE_URL/SITE_URL/VERCEL_URL) for success/cancel URLs" },
+      { error: "Missing site URL (APP_URL/NEXT_PUBLIC_SITE_URL/SITE_URL/VERCEL_URL) for success/cancel URLs" },
       { status: 500 }
     );
   }
@@ -121,8 +123,9 @@ export async function POST(request: NextRequest) {
     mode: "subscription",
     customer: stripeCustomerId,
     line_items: [{ price: effectivePriceId, quantity: 1 }],
-    success_url: `${baseSiteUrl}/billing/success`,
-    cancel_url: `${baseSiteUrl}/billing/cancel`,
+    success_url: `${baseSiteUrl}/billing?sync=1&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${baseSiteUrl}/pricing`,
+    customer_email: user.email ?? undefined,
     client_reference_id: user.id,
     metadata: { user_id: user.id },
     subscription_data: {

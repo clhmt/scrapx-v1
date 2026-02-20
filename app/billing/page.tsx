@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import BillingActions from "@/app/billing/BillingActions";
@@ -40,7 +41,44 @@ function statusStyles(status?: string): string {
   }
 }
 
-export default async function BillingPage() {
+type BillingPageProps = {
+  searchParams?: { sync?: string; session_id?: string };
+};
+
+async function runExplicitBillingSync(searchParams?: { sync?: string; session_id?: string }): Promise<string | null> {
+  if (searchParams?.sync !== "1" || !searchParams.session_id) {
+    return null;
+  }
+
+  const cookieHeader = (await cookies()).toString();
+  const headersList = await headers();
+  const host = headersList.get("host");
+  const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
+
+  if (!host) {
+    return "We could not verify your payment yet. Please retry sync.";
+  }
+
+  const syncUrl = `${protocol}://${host}/api/billing/sync?session_id=${encodeURIComponent(searchParams.session_id)}`;
+
+  const response = await fetch(syncUrl, {
+    method: "GET",
+    headers: {
+      cookie: cookieHeader,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return "Your payment was received, but activation is still syncing. Please retry.";
+  }
+
+  return null;
+}
+
+export default async function BillingPage({ searchParams }: BillingPageProps) {
+  const resolvedSearchParams = searchParams;
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -49,6 +87,8 @@ export default async function BillingPage() {
   if (!user) {
     redirect("/auth");
   }
+
+  const syncError = await runExplicitBillingSync(resolvedSearchParams);
 
   const emptySummary: BillingSummaryResponse = {
     isPremium: false,
@@ -85,6 +125,15 @@ export default async function BillingPage() {
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="text-3xl font-bold text-gray-900">Billing</h1>
+
+        {syncError ? (
+          <section className="mt-6 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+            <p>{syncError}</p>
+            <Link href={`/billing?sync=1&session_id=${encodeURIComponent(resolvedSearchParams?.session_id ?? "")}`} className="mt-2 inline-block font-semibold underline">
+              Retry activation sync
+            </Link>
+          </section>
+        ) : null}
 
         {!hasSubscription ? (
           <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">

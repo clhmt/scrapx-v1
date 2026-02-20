@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 
-export function createAdminClient(): SupabaseClient<Database> {
+export function getSupabaseAdminClient(): SupabaseClient<Database> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -13,3 +13,6 @@ export function createAdminClient(): SupabaseClient<Database> {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
+// Backward-compatible alias.
+export const createAdminClient = getSupabaseAdminClient;
