@@ -28,6 +28,7 @@ export type BillingInvoiceSummary = {
 export type BillingSummaryResponse = {
   isPremium: boolean;
   customerId: string | null;
+  hasSubscription: boolean;
   subscription: BillingSubscriptionSummary | null;
   paymentMethod: BillingPaymentMethodSummary | null;
   invoices: BillingInvoiceSummary[];

@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import BillingActions from "@/app/billing/BillingActions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getAuthenticatedBillingSummary } from "@/lib/billing/getBillingSummary";
 import type { BillingSummaryResponse } from "@/types/billing";
 
 function formatTimestamp(unixSeconds: number | null): string {
@@ -37,35 +37,6 @@ function statusStyles(status?: string): string {
   }
 }
 
-async function getBillingSummary(): Promise<BillingSummaryResponse> {
-  const headerStore = await headers();
-  const cookieStore = await cookies();
-  const protocol = headerStore.get("x-forwarded-proto") ?? "http";
-  const host = headerStore.get("host");
-
-  if (!host) {
-    throw new Error("Missing host header");
-  }
-
-  const response = await fetch(`${protocol}://${host}/api/billing/summary`, {
-    method: "GET",
-    headers: {
-      cookie: cookieStore.toString(),
-    },
-    cache: "no-store",
-  });
-
-  if (response.status === 401) {
-    redirect("/auth");
-  }
-
-  if (!response.ok) {
-    throw new Error("Failed to load billing summary");
-  }
-
-  return (await response.json()) as BillingSummaryResponse;
-}
-
 export default async function BillingPage() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -76,9 +47,35 @@ export default async function BillingPage() {
     redirect("/auth");
   }
 
-  const summary = await getBillingSummary();
-  const hasSubscription = Boolean(summary.subscription);
-  const hasActiveSubscription = summary.subscription?.status === "active" || summary.subscription?.status === "trialing";
+  const emptySummary: BillingSummaryResponse = {
+    isPremium: false,
+    customerId: null,
+    hasSubscription: false,
+    subscription: null,
+    paymentMethod: null,
+    invoices: [],
+  };
+
+  let summary = emptySummary;
+  let stripeCustomerId: string | null = null;
+
+  try {
+    const billing = await getAuthenticatedBillingSummary();
+
+    if (!billing) {
+      redirect("/auth");
+    }
+
+    summary = billing.summary;
+    stripeCustomerId = billing.summary.customerId;
+  } catch {
+    console.error("[billing] summary failed", {
+      userId: user.id,
+      hasCustomer: Boolean(stripeCustomerId),
+    });
+  }
+
+  const hasSubscription = summary.hasSubscription;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
@@ -86,7 +83,7 @@ export default async function BillingPage() {
       <main className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="text-3xl font-bold text-gray-900">Billing</h1>
 
-        {!hasActiveSubscription ? (
+        {!hasSubscription ? (
           <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-900">No active subscription</h2>
             <p className="mt-2 text-sm text-gray-600">You’re currently on the Free plan. Upgrade to unlock premium features.</p>
