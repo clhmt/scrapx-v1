@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import StripeClient from "stripe";
-import type Stripe from "stripe";
+import Stripe from "stripe";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 import {
@@ -17,7 +16,7 @@ type InvoiceWithSubscription = Stripe.Invoice & { subscription?: string | Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-const stripe = stripeSecretKey ? new StripeClient(stripeSecretKey) : null;
+const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
 function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
   const inv = invoice as InvoiceWithSubscription;
@@ -151,7 +150,7 @@ export async function POST(request: NextRequest) {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = event.data.object as unknown as Stripe.Subscription;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
 
       if (!customerId) {
