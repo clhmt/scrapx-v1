@@ -7,12 +7,12 @@ export type ResolvedStripe = {
   subscriptionStatus: string | null;
 };
 
-type CandidateMatch = {
-  stripeCustomerId: string;
-  stripeSubscriptionId: string;
-  subscriptionStatus: string;
-  subscriptionCreated: number;
-  score: number;
+type StripeSubscriptionLike = {
+  id: string;
+  status: string;
+  created?: number | null;
+  cancel_at_period_end?: boolean | null;
+  customer: string | { id: string };
 };
 
 const STATUS_PRIORITY: Record<string, number> = {
@@ -31,6 +31,43 @@ function emptyResolution(): ResolvedStripe {
   };
 }
 
+function getCustomerId(subscription: StripeSubscriptionLike): string | null {
+  if (typeof subscription.customer === "string") {
+    return subscription.customer;
+  }
+
+  if (subscription.customer && typeof subscription.customer === "object") {
+    return subscription.customer.id;
+  }
+
+  return null;
+}
+
+function compareSubscriptions(a: StripeSubscriptionLike, b: StripeSubscriptionLike): number {
+  const scoreA = STATUS_PRIORITY[a.status] ?? 0;
+  const scoreB = STATUS_PRIORITY[b.status] ?? 0;
+
+  if (scoreA !== scoreB) {
+    return scoreB - scoreA;
+  }
+
+  const createdA = a.created ?? 0;
+  const createdB = b.created ?? 0;
+
+  if (createdA !== createdB) {
+    return createdB - createdA;
+  }
+
+  const aNotCanceling = a.cancel_at_period_end === false;
+  const bNotCanceling = b.cancel_at_period_end === false;
+
+  if (aNotCanceling !== bNotCanceling) {
+    return bNotCanceling ? 1 : -1;
+  }
+
+  return 0;
+}
+
 export async function resolveStripeCustomerForUser(params: {
   userId: string;
   email: string | null;
@@ -46,7 +83,7 @@ export async function resolveStripeCustomerForUser(params: {
     limit: 10,
   });
 
-  const matches: CandidateMatch[] = [];
+  const allSubscriptions: StripeSubscriptionLike[] = [];
 
   for (const customer of customers.data) {
     const subscriptions = await stripe.subscriptions.list({
@@ -55,65 +92,23 @@ export async function resolveStripeCustomerForUser(params: {
       limit: 10,
     });
 
-    if (!subscriptions.data.length) {
-      continue;
-    }
-
-    let bestSubscription = subscriptions.data[0];
-    let bestScore = STATUS_PRIORITY[bestSubscription.status] ?? 0;
-
-    for (const subscription of subscriptions.data.slice(1)) {
-      const score = STATUS_PRIORITY[subscription.status] ?? 0;
-      const created = subscription.created ?? 0;
-      const bestCreated = bestSubscription.created ?? 0;
-
-      if (score > bestScore || (score === bestScore && created > bestCreated)) {
-        bestSubscription = subscription;
-        bestScore = score;
-      }
-    }
-
-    matches.push({
-      stripeCustomerId: customer.id,
-      stripeSubscriptionId: bestSubscription.id,
-      subscriptionStatus: bestSubscription.status,
-      subscriptionCreated: bestSubscription.created ?? 0,
-      score: bestScore,
-    });
+    allSubscriptions.push(...(subscriptions.data as unknown as StripeSubscriptionLike[]));
   }
 
-  if (!matches.length) {
+  if (!allSubscriptions.length) {
     return emptyResolution();
   }
 
-  const sortedMatches = [...matches].sort((a, b) => {
-    if (b.score !== a.score) {
-      return b.score - a.score;
-    }
+  const [bestSubscription] = [...allSubscriptions].sort(compareSubscriptions);
+  const stripeCustomerId = getCustomerId(bestSubscription);
 
-    if (b.subscriptionCreated !== a.subscriptionCreated) {
-      return b.subscriptionCreated - a.subscriptionCreated;
-    }
-
-    return 0;
-  });
-
-  if (sortedMatches.length > 1) {
-    const [first, second] = sortedMatches;
-    const ambiguous =
-      first.score === second.score && first.subscriptionCreated === second.subscriptionCreated;
-
-    if (ambiguous) {
-      console.warn("[billing] stripe email lookup ambiguous", { userId: params.userId });
-      return emptyResolution();
-    }
+  if (!stripeCustomerId) {
+    return emptyResolution();
   }
 
-  const winner = sortedMatches[0];
-
   return {
-    stripeCustomerId: winner.stripeCustomerId,
-    stripeSubscriptionId: winner.stripeSubscriptionId,
-    subscriptionStatus: winner.subscriptionStatus,
+    stripeCustomerId,
+    stripeSubscriptionId: bestSubscription.id,
+    subscriptionStatus: bestSubscription.status,
   };
 }
