@@ -97,19 +97,21 @@ export async function GET() {
 
     const invoiceSummaries: BillingInvoiceSummary[] = ((invoices?.data ?? []) as InvoiceLike[])
       .filter(hasStringId)
-      .map((inv) => ({
-        id: inv.id,
-        status: (inv.status ?? null) as any,
-        amount_paid: inv.amount_paid ?? 0,
-        amount_due: inv.amount_due ?? 0,
-        currency: inv.currency ?? "usd",
-        hosted_invoice_url: inv.hosted_invoice_url ?? null,
-        invoice_pdf: inv.invoice_pdf ?? null,
-        created: inv.created ?? null,
-        period_start: inv.period_start ?? null,
-        period_end: inv.period_end ?? null,
-        number: inv.number ?? null,
-      }));
+      .map((inv) => {
+        return {
+          id: inv.id,
+          status: (inv.status ?? null) as any,
+          amount_paid: inv.amount_paid ?? 0,
+          amount_due: inv.amount_due ?? 0,
+          currency: inv.currency ?? "usd",
+          hosted_invoice_url: inv.hosted_invoice_url ?? null,
+          invoice_pdf: inv.invoice_pdf ?? null,
+          created: Number(inv.created ?? 0),
+          period_start: Number(inv.period_start ?? 0),
+          period_end: Number(inv.period_end ?? 0),
+          number: inv.number ?? null,
+        } as BillingInvoiceSummary;
+      });
 
     const payload: BillingSummaryResponse = {
       isPremium: context.isPremium,
